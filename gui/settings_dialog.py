@@ -376,7 +376,9 @@ class SettingsDialog(QtWidgets.QDialog):
     def clear_blacklist(self):
         self.bl_list.clear()
 
-
+    def apply_settings(self):
+        """Applies the settings to the application."""
+        self.update_font_callback()
 
     def save(self, configure_startup):
         """Saves all settings and applies them live."""
