@@ -1,9 +1,7 @@
 """Settings dialog for the WheelScrollFixer application."""
 import os
 import sys
-# Import the function from the parent module
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from WheelScrollFixer import get_foreground_process_name
+from utils import get_foreground_process_name
 from PyQt5 import QtWidgets, QtGui, QtCore
 from .app_profile_dialog import AppProfileDialog
 from .help_dialog import HelpDialog

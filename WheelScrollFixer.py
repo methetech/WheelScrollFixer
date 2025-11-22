@@ -24,6 +24,7 @@ import win32con
 from PyQt5 import QtWidgets, QtGui, QtCore
 from app_context import AppContext
 from gui import SettingsDialog, HelpDialog, AboutDialog
+from utils import get_foreground_process_name
 
 class MSLLHOOKSTRUCT(ctypes.Structure):
     _fields_ = [
@@ -212,17 +213,7 @@ def configure_startup(enable: bool):
 # =======================
 # Low-Level Mouse Hooker
 # =======================
-def get_foreground_process_name():
-    """Returns the name of the process associated with the foreground window."""
-    try:
-        hwnd = win32gui.GetForegroundWindow()
-        if not hwnd:
-            return None
-        _, pid = win32process.GetWindowThreadProcessId(hwnd)
-        proc = psutil.Process(pid)
-        return proc.name()
-    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-        return None
+from utils import get_foreground_process_name
 
 class MouseHook:
     def __init__(self, settings: Settings):
