@@ -8,7 +8,9 @@ A lightweight but powerful Windows utility to prevent accidental mouse wheel scr
 
 <img src="WheelScrollFixer.jpg" alt="WheelScrollFixer Settings UI" width="400"/>
 
-**Important Note:** Because the application uses a low-level mouse hook to function, some antivirus software may flag it as a potential threat. This is a false positive. Please allow the executable to run or add an exclusion for it in your antivirus settings.
+**Important Notes:**
+- **Administrator Privileges**: This application requires Administrator privileges to install low-level mouse hooks. You will see a UAC prompt when starting the application.
+- **Antivirus Warning**: Because the application uses low-level mouse hooks, some antivirus software may flag it as a potential threat. This is a false positive. Please allow the executable to run or add an exclusion for it in your antivirus settings.
 
 ---
 
@@ -18,7 +20,7 @@ A lightweight but powerful Windows utility to prevent accidental mouse wheel scr
 
 1.  Go to the project's **Releases Page**.
 2.  Download the `WheelScrollFixer.exe` file from the latest release.
-3.  Run `WheelScrollFixer.exe`.
+3.  Run `WheelScrollFixer.exe` (it will prompt for Administrator privileges).
 
 ### For Developers
 
@@ -35,15 +37,15 @@ If you want to run or build from source:
     pip install -r requirements.txt
     ```
 
-3.  **Run from source**:
+3.  **Run from source** (requires Administrator privileges):
     ```bash
     python WheelScrollFixer.py
     ```
 
 4.  **Build the executable**:
-    To create the standalone `wheel_scroll_fixer.exe` file, run the following command:
+    To create the standalone `WheelScrollFixer.exe` file, run the following command:
     ```bash
-    pyinstaller --onefile --noconsole WheelScrollFixer.py
+    pyinstaller --onefile --noconsole --icon=mouse.ico --name=WheelScrollFixer WheelScrollFixer.py
     ```
     The final executable will be located in the `dist` folder.
 

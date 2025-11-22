@@ -1,3 +1,14 @@
+## 1.0.3 (2025-11-22)
+
+*   **BREAKING**: Renamed main script from `wheel.py` to `WheelScrollFixer.py` for consistency.
+*   **Fix**: Fixed critical 64-bit compatibility issues with ctypes definitions (LRESULT, WPARAM, LPARAM).
+*   **Fix**: Implemented auto-elevation to Administrator privileges for proper low-level hook functionality.
+*   **Fix**: Resolved SetWindowsHookEx Error 126 by correctly setting hMod parameter to NULL for WH_MOUSE_LL.
+*   **Fix**: Fixed OverflowError in CallNextHookEx by explicitly defining argtypes for 64-bit pointers.
+*   **Fix**: Implemented missing get_foreground_process_name function for per-app profiles.
+*   **Improvement**: Replaced debug print statements with proper logging for cleaner production operation.
+*   **Docs**: Updated all documentation to reflect new filename (WheelScrollFixer.py/exe).
+
 ## 1.0.2 (2025-11-10)
 
 *   Fix: Implemented atomic saving for settings to prevent data corruption and race conditions.
