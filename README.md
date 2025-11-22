@@ -17,8 +17,8 @@ A lightweight but powerful Windows utility to prevent accidental mouse wheel scr
 ### For Users
 
 1.  Go to the project's **Releases Page**.
-2.  Download the `wheel_scroll_fixer.exe` file from the latest release.
-3.  Run `wheel_scroll_fixer.exe`.
+2.  Download the `WheelScrollFixer.exe` file from the latest release.
+3.  Run `WheelScrollFixer.exe`.
 
 ### For Developers
 
@@ -37,13 +37,13 @@ If you want to run or build from source:
 
 3.  **Run from source**:
     ```bash
-    python wheel_scroll_fixer.py
+    python WheelScrollFixer.py
     ```
 
 4.  **Build the executable**:
     To create the standalone `wheel_scroll_fixer.exe` file, run the following command:
     ```bash
-    pyinstaller --onefile --noconsole wheel_scroll_fixer.py
+    pyinstaller --onefile --noconsole WheelScrollFixer.py
     ```
     The final executable will be located in the `dist` folder.
 

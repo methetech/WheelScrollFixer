@@ -212,6 +212,18 @@ def configure_startup(enable: bool):
 # =======================
 # Low-Level Mouse Hooker
 # =======================
+def get_foreground_process_name():
+    """Returns the name of the process associated with the foreground window."""
+    try:
+        hwnd = win32gui.GetForegroundWindow()
+        if not hwnd:
+            return None
+        _, pid = win32process.GetWindowThreadProcessId(hwnd)
+        proc = psutil.Process(pid)
+        return proc.name()
+    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+        return None
+
 class MouseHook:
     def __init__(self, settings: Settings):
         self.settings = settings
@@ -264,16 +276,22 @@ class MouseHook:
 
     def start(self):
         self.thread_id = self.kernel32.GetCurrentThreadId()
+        
+        # Define LRESULT for 64-bit compatibility
+        LRESULT = ctypes.c_longlong if ctypes.sizeof(ctypes.c_void_p) == 8 else ctypes.c_long
+        
         CMPFUNC = ctypes.WINFUNCTYPE(
-            ctypes.c_int, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM
+            LRESULT, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM
         )
 
         def hook_proc(nCode, wParam, lParam):
             if nCode == 0 and wParam == win32con.WM_MOUSEWHEEL:
+                # logging.debug(f"HOOK: Event received. Enabled={self.enabled}")
                 if not self.enabled:
                     return self.user32.CallNextHookEx(self.hook_id, nCode, wParam, lParam)
 
                 if self.is_blacklisted():
+                    # logging.debug("HOOK: Blacklisted app.")
                     return self.user32.CallNextHookEx(self.hook_id, nCode, wParam, lParam)
 
                 ms = ctypes.cast(lParam, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
@@ -281,40 +299,62 @@ class MouseHook:
                 current_dir = 1 if delta_short > 0 else -1
                 now = time.time()
                 current_block_interval, current_direction_change_threshold = self._get_current_app_settings()
+                
+                logging.debug(f"HOOK: Delta={delta_short}, Dir={current_dir}, LastDir={self.last_dir}, TimeDiff={now - self.last_time:.4f}")
 
                 if (self.last_dir is None) or (now - self.last_time >= current_block_interval):
                     self.last_dir = current_dir
                     self.last_time = now
                     self._consecutive_opposite_events = 0
+                    logging.debug("HOOK: PASS (Time/First)")
                     return self.user32.CallNextHookEx(self.hook_id, nCode, wParam, lParam)
 
                 if current_dir == self.last_dir:
                     self.last_time = now
                     self._consecutive_opposite_events = 0
+                    logging.debug("HOOK: PASS (Same Dir)")
                     return self.user32.CallNextHookEx(self.hook_id, nCode, wParam, lParam)
                 else:
                     self._consecutive_opposite_events += 1
+                    logging.debug(f"HOOK: CHECK (Opposite Dir) Count={self._consecutive_opposite_events}/{current_direction_change_threshold}")
                     if self._consecutive_opposite_events >= current_direction_change_threshold:
                         self.last_dir = current_dir
                         self.last_time = now
                         self._consecutive_opposite_events = 0
+                        logging.debug("HOOK: PASS (Threshold Met)")
                         return self.user32.CallNextHookEx(self.hook_id, nCode, wParam, lParam)
                     else:
                         if current_dir > 0:
                             self.blocked_up += 1
                         else:
                             self.blocked_down += 1
+                        logging.debug("HOOK: BLOCK")
                         return 1
 
             return self.user32.CallNextHookEx(self.hook_id, nCode, wParam, lParam)
 
         self.hook_cb = CMPFUNC(hook_proc)
+        
+        # Set return type for CallNextHookEx to match LRESULT
+        self.user32.CallNextHookEx.restype = LRESULT
+        self.user32.CallNextHookEx.argtypes = [ctypes.c_void_p, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM]
+        self.user32.SetWindowsHookExA.restype = ctypes.c_void_p # HHOOK
+
+        # For WH_MOUSE_LL, hMod should be NULL (0) if the hook proc is in the same process/thread context
+        # or if we are using a low-level hook which doesn't require injection.
+        # Error 126 (ERROR_MOD_NOT_FOUND) happens when we pass a module handle that isn't valid for the hook type.
         self.hook_id = self.user32.SetWindowsHookExA(
             win32con.WH_MOUSE_LL,
             self.hook_cb,
-            self.kernel32.GetModuleHandleW(None),
+            0, # hMod must be NULL for WH_MOUSE_LL in Python usually
             0,
         )
+        
+        if not self.hook_id:
+            error_code = self.kernel32.GetLastError()
+            logging.error(f"CRITICAL ERROR: Failed to install mouse hook. Error Code: {error_code}")
+        else:
+            logging.info(f"SUCCESS: Mouse hook installed. Hook ID: {self.hook_id}")
 
         msg = wintypes.MSG()
         while True:
@@ -350,6 +390,35 @@ def run_watchdog(parent_pid_str):
     sys.exit(0)
 
 if __name__ == "__main__":
+    def is_admin():
+        try:
+            return ctypes.windll.shell32.IsUserAnAdmin()
+        except:
+            return False
+
+    if not is_admin():
+        # Re-run the program with admin rights
+        print("Requesting administrative privileges...")
+        try:
+            # Prepare arguments
+            script = os.path.abspath(__file__)
+            params = ' '.join([f'"{arg}"' for arg in sys.argv[1:]])
+            
+            # If running as a script, we need to pass the script path to the executable (python.exe)
+            # If frozen (exe), sys.executable is the program itself
+            if getattr(sys, 'frozen', False):
+                executable = sys.executable
+                arguments = params
+            else:
+                executable = sys.executable
+                arguments = f'"{script}" {params}'
+
+            ctypes.windll.shell32.ShellExecuteW(None, "runas", executable, arguments, None, 1)
+            sys.exit(0)
+        except Exception as e:
+            print(f"Failed to elevate: {e}")
+            # Fallback to normal execution, though it might fail
+    
     if len(sys.argv) > 2 and sys.argv[1] == "--watchdog":
         run_watchdog(sys.argv[2])
     else:

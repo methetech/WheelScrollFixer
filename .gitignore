@@ -33,3 +33,9 @@ venv/
 
 # Log files
 *.log
+
+# Executables
+*.exe
+
+# User Configuration
+config/*.ini
