@@ -1,7 +1,10 @@
 """Settings dialog for the WheelScrollFixer application."""
 import os
+import sys
+# Import the function from the parent module
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from WheelScrollFixer import get_foreground_process_name
 from PyQt5 import QtWidgets, QtGui, QtCore
-import utils
 from .app_profile_dialog import AppProfileDialog
 from .help_dialog import HelpDialog
 from .about_dialog import AboutDialog
@@ -363,7 +366,7 @@ class SettingsDialog(QtWidgets.QDialog):
         QtCore.QTimer.singleShot(120, self._get_and_add_foreground_app)
 
     def _get_and_add_foreground_app(self):
-        proc_name = utils.get_foreground_process_name()
+        proc_name = get_foreground_process_name()
         existing = [self.bl_list.item(i).text() for i in range(self.bl_list.count())]
         if proc_name and proc_name not in existing:
             self.bl_list.addItem(proc_name)
