@@ -81,6 +81,15 @@ class SettingsDialog(QtWidgets.QDialog):
             'quick changes in scroll direction if you scroll aggressively enough.'
         )
 
+        self.strict_mode_cb = QtWidgets.QCheckBox("Strict Mode (Ignores first tick)")
+        self.strict_mode_cb.setChecked(self.settings.get_strict_mode())
+        self.strict_mode_cb.setToolTip('Require two consecutive scrolls in the same direction to start scrolling.')
+        self.strict_mode_cb.setWhatsThis(
+            'If enabled, the very first scroll event of a new sequence is blocked and used as a confirmation check. '
+            'You must scroll twice in the same direction to start scrolling. This fixes "glitchy" mice that '
+            'send a random opposite signal when you start scrolling.'
+        )
+
     def _create_app_control_widgets(self):
         """Creates the widgets for the application control settings."""
         self.bl_list = QtWidgets.QListWidget()
@@ -145,6 +154,10 @@ class SettingsDialog(QtWidgets.QDialog):
         self.save_btn.setToolTip("Save all settings.")
         self.save_btn.setWhatsThis('Saves all changes to persistent settings, applies them immediately to the running hook, and updates the tray UI as needed.')
 
+        self.status_label = QtWidgets.QLabel("")
+        self.status_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.status_label.setStyleSheet("color: #2e7d32; font-weight: bold; margin-top: 5px;")
+
     def _create_layouts(self):
         """Creates the layouts for the dialog."""
         self._create_blocking_logic_layout()
@@ -160,6 +173,7 @@ class SettingsDialog(QtWidgets.QDialog):
         blocking_layout = QtWidgets.QFormLayout()
         blocking_layout.addRow("Block interval (s):", self.interval_spin)
         blocking_layout.addRow("Direction change threshold:", self.direction_change_threshold_spin)
+        blocking_layout.addRow(self.strict_mode_cb)
         blocking_group.setLayout(blocking_layout)
         self.blocking_group = blocking_group
 
@@ -220,6 +234,7 @@ class SettingsDialog(QtWidgets.QDialog):
         form.addRow(self.app_profiles_group)
         form.addRow(self.general_settings_group)
         form.addRow(self.save_btn)
+        form.addRow(self.status_label)
 
     def _connect_signals(self, configure_startup):
         """Connects the signals for the dialog."""
@@ -247,8 +262,56 @@ class SettingsDialog(QtWidgets.QDialog):
         )
 
     def closeEvent(self, event):
-        self.hide()
-        event.ignore()
+        # Check if settings have changed but not saved
+        current_settings = {
+            'interval': self.interval_spin.value(),
+            'threshold': self.direction_change_threshold_spin.value(),
+            'strict_mode': self.strict_mode_cb.isChecked(),
+            'blacklist': [self.bl_list.item(i).text() for i in range(self.bl_list.count())],
+            'startup': self.start_cb.isChecked(),
+            'enabled': self.enabled_cb.isChecked(),
+            'font_size': self.font_size_spin.value()
+        }
+
+        saved_settings = {
+            'interval': self.settings.get_interval(),
+            'threshold': self.settings.get_direction_change_threshold(),
+            'strict_mode': self.settings.get_strict_mode(),
+            'blacklist': self.settings.get_blacklist(),
+            'startup': self.settings.get_startup(),
+            'enabled': self.settings.get_enabled(),
+            'font_size': self.settings.get_font_size()
+        }
+
+        if current_settings != saved_settings:
+            reply = QtWidgets.QMessageBox.question(
+                self, 'Unsaved Changes',
+                "You have unsaved changes. Do you want to save them before closing?",
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No | QtWidgets.QMessageBox.Cancel,
+                QtWidgets.QMessageBox.Yes
+            )
+
+            if reply == QtWidgets.QMessageBox.Yes:
+                self.save_btn.click()
+                self.hide()
+                event.ignore()
+            elif reply == QtWidgets.QMessageBox.No:
+                # Revert changes in UI to match saved settings next time it opens
+                self.interval_spin.setValue(saved_settings['interval'])
+                self.direction_change_threshold_spin.setValue(saved_settings['threshold'])
+                self.strict_mode_cb.setChecked(saved_settings['strict_mode'])
+                self.bl_list.clear()
+                self.bl_list.addItems(saved_settings['blacklist'])
+                self.start_cb.setChecked(saved_settings['startup'])
+                self.enabled_cb.setChecked(saved_settings['enabled'])
+                self.font_size_spin.setValue(saved_settings['font_size'])
+                self.hide()
+                event.ignore()
+            else:
+                event.ignore()
+        else:
+            self.hide()
+            event.ignore()
 
     def changeEvent(self, event):
         if event.type() == QtCore.QEvent.WindowStateChange:
@@ -391,6 +454,7 @@ class SettingsDialog(QtWidgets.QDialog):
         
         self.settings.set_enabled(self.enabled_cb.isChecked())
         self.settings.set_direction_change_threshold(self.direction_change_threshold_spin.value())
+        self.settings.set_strict_mode(self.strict_mode_cb.isChecked())
         self.settings.set_font_size(self.font_size_spin.value())
 
 
@@ -400,4 +464,6 @@ class SettingsDialog(QtWidgets.QDialog):
         # Apply settings live
         self.hook.reload_settings(self.update_tray_icon_callback, self.update_font_callback)
         self.apply_settings()
-        QtWidgets.QMessageBox.information(self, "Saved", "Settings saved.")
+        
+        self.status_label.setText("Settings saved successfully.")
+        QtCore.QTimer.singleShot(3000, lambda: self.status_label.setText(""))

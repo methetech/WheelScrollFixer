@@ -1,3 +1,11 @@
+## 1.2.0 (2025-11-30)
+
+*   **New Feature (Strict Mode)**: Introduced "Strict Mode" (default: ON). This feature blocks the very first scroll event of a new sequence and waits for a second event in the same direction to confirm user intent. This effectively eliminates "start-of-scroll" glitches where faulty mice send a random signal before the intended movement.
+*   **UX Improvement (Unsaved Changes)**: The settings dialog now detects unsaved changes and prompts the user to save, discard, or cancel when attempting to close the window without saving.
+*   **UI Improvement**: Added a status label to the settings dialog that provides visual confirmation ("Settings saved successfully") instead of an intrusive popup alert.
+*   **Refactor**: Enabled "Strict Mode" by default for new installations as it provides the most robust solution for jittery mouse wheels.
+*   **Refactor**: Standardized logging format for better debugging.
+
 ## 1.0.3 (2025-11-22)
 
 *   **BREAKING**: Renamed main script from `wheel.py` to `WheelScrollFixer.py` for consistency.

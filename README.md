@@ -68,15 +68,15 @@ It works through a simple but effective workflow:
 3.  **Blocking the Jitter**:
     *   If you continue scrolling in the **same direction**, the timer simply resets, and scrolling proceeds as normal.
     *   If a scroll event in the **opposite direction** occurs within the block interval, the application assumes it's an accidental jitter and **blocks it**. This is the core of the fix.
+    *   **Strict Mode (NEW in v1.2.0)**: If enabled (default), the application ignores the *very first* scroll event of a new sequence. It waits for a second event in the same direction to confirm your intent. This completely fixes issues with mice that send random signals when you first touch the wheel.
 
 4.  **Allowing Deliberate Changes**: What if you *meant* to change direction quickly? That's what the **Direction Change Threshold** is for. This setting defines how many consecutive opposite-direction events are needed to override the block. If you scroll aggressively enough in the new direction, the application recognizes it as a deliberate change, establishes a new scrolling direction, and lets the events pass through.
-
-
 
 This entire process happens instantly and uses minimal system resources, resulting in a much smoother and more predictable scrolling experience.
 
 ## Features
 
+*   **Strict Mode (v1.2.0)**: Advanced logic that verifies scroll intent before allowing movement, eliminating start-of-scroll glitches.
 *   **Customizable Blocking Logic**: Fine-tune the `Block Interval` and `Direction Change Threshold` to match your mouse's sensitivity and your personal preference.
 *   **Application Blacklist**: Disable scroll blocking for specific applications (e.g., games, design software) where you need raw, unfiltered mouse input.
 *   **Per-Application Profiles**: Define unique `Interval` and `Threshold` settings for different applications.

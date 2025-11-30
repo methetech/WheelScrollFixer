@@ -187,6 +187,12 @@ class Settings(IniSettings):
     def set_font_size(self, v: float):
         self.set_value("font_size", v)
 
+    def get_strict_mode(self) -> bool:
+        return self.value("strict_mode", True, type=bool)
+
+    def set_strict_mode(self, v: bool):
+        self.set_value("strict_mode", v)
+
     def get_app_profiles(self) -> dict:
         return self.value("app_profiles", {}, type=dict)
 
@@ -223,6 +229,8 @@ class MouseHook:
         self.app_profiles = self.settings.get_app_profiles()
         self.enabled = self.settings.get_enabled()
         self.direction_change_threshold = self.settings.get_direction_change_threshold()
+        self.strict_mode = self.settings.get_strict_mode()
+        self.pending_start_dir = None
         self.last_dir = None
         self.last_time = 0.0
         self._consecutive_opposite_events = 0
@@ -240,6 +248,7 @@ class MouseHook:
         self.app_profiles = self.settings.get_app_profiles()
         self.enabled = self.settings.get_enabled()
         self.direction_change_threshold = self.settings.get_direction_change_threshold()
+        self.strict_mode = self.settings.get_strict_mode()
         self._consecutive_opposite_events = 0
         if update_tray_icon_callback:
             update_tray_icon_callback()
@@ -293,16 +302,50 @@ class MouseHook:
                 
                 logging.debug(f"HOOK: Delta={delta_short}, Dir={current_dir}, LastDir={self.last_dir}, TimeDiff={now - self.last_time:.4f}")
 
-                if (self.last_dir is None) or (now - self.last_time >= current_block_interval):
-                    self.last_dir = current_dir
-                    self.last_time = now
+                # Check if the current session (blocking interval) has expired
+                if (self.last_dir is not None) and (now - self.last_time >= current_block_interval):
+                    self.last_dir = None
+                    self.pending_start_dir = None
                     self._consecutive_opposite_events = 0
-                    logging.debug("HOOK: PASS (Time/First)")
-                    return self.user32.CallNextHookEx(self.hook_id, nCode, wParam, lParam)
 
+                if self.last_dir is None:
+                    # Starting a new sequence
+                    if self.strict_mode:
+                        if self.pending_start_dir is None:
+                            # First tick: Block and wait for confirmation
+                            self.pending_start_dir = current_dir
+                            self.last_time = now
+                            logging.debug("HOOK: BLOCK (Strict: First Tick)")
+                            return 1
+                        else:
+                            # Second tick: Check confirmation
+                            if current_dir == self.pending_start_dir:
+                                # Confirmed
+                                self.last_dir = current_dir
+                                self.last_time = now
+                                self.pending_start_dir = None
+                                logging.debug("HOOK: PASS (Strict: Confirmed)")
+                                return self.user32.CallNextHookEx(self.hook_id, nCode, wParam, lParam)
+                            else:
+                                # Mismatch (Glitch detected or user erratic)
+                                # Treat this as a NEW First Tick
+                                self.pending_start_dir = current_dir
+                                self.last_time = now
+                                logging.debug("HOOK: BLOCK (Strict: Mismatch Reset)")
+                                return 1
+                    else:
+                        # Standard Mode: Allow immediately
+                        self.last_dir = current_dir
+                        self.last_time = now
+                        self._consecutive_opposite_events = 0
+                        logging.debug("HOOK: PASS (Time/First)")
+                        return self.user32.CallNextHookEx(self.hook_id, nCode, wParam, lParam)
+
+                # If we are here, last_dir is set (Active Session)
                 if current_dir == self.last_dir:
                     self.last_time = now
                     self._consecutive_opposite_events = 0
+                    self.pending_start_dir = None
                     logging.debug("HOOK: PASS (Same Dir)")
                     return self.user32.CallNextHookEx(self.hook_id, nCode, wParam, lParam)
                 else:
@@ -312,6 +355,7 @@ class MouseHook:
                         self.last_dir = current_dir
                         self.last_time = now
                         self._consecutive_opposite_events = 0
+                        self.pending_start_dir = None
                         logging.debug("HOOK: PASS (Threshold Met)")
                         return self.user32.CallNextHookEx(self.hook_id, nCode, wParam, lParam)
                     else:
@@ -413,7 +457,17 @@ if __name__ == "__main__":
     if len(sys.argv) > 2 and sys.argv[1] == "--watchdog":
         run_watchdog(sys.argv[2])
     else:
-        logging.basicConfig(level=logging.INFO, filename=os.path.join(tempfile.gettempdir(), 'scroll_lock_main.log'), filemode='w')
+        # Configure logging to both file and console with DEBUG level
+        log_file = os.path.join(tempfile.gettempdir(), 'scroll_lock_main.log')
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(asctime)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler(log_file, mode='w'),
+                logging.StreamHandler(sys.stdout)
+            ]
+        )
+        logging.info(f"Logging initialized. Log file: {log_file}")
         
         app_name = "WheelScrollFixer"
         window_title = "Scroll Lock Settings"

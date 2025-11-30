@@ -2,6 +2,19 @@
 
 This document outlines the future direction and potential features for WheelScrollFixer. It's a living document intended to guide development and inspire contributions. If you're looking for a way to contribute, picking up an item from this list is a great place to start!
 
+## Next Up: Heuristic & Smart Analysis (The "Brain" Update)
+
+These features aim to move beyond simple counting logic to "intelligent" signal processing, making the blocker indistinguishable from magic.
+
+*   [ ] **Physics/Speed Check ("Impossible Reversal")**:
+    *   Implement a check for "impossible" physical movements. If a scroll reversal occurs within an extremely short timeframe (e.g., <15ms) after a scroll event, it is physically impossible for a human finger to have stopped and reversed the wheel. These should be instantly discarded as noise without counting against the threshold.
+*   [ ] **Momentum-Based Dynamic Thresholding**:
+    *   **Fast Scroll Detection**: If the user is scrolling very fast (high momentum), increase the *Direction Change Threshold* automatically (e.g., from 2 to 4). It is highly unlikely a user wants to reverse direction instantly while spinning the wheel fast.
+    *   **Slow Scroll Detection**: If the user is scrolling slowly (reading mode), decrease the threshold to allow for more responsive, deliberate direction changes.
+*   [ ] **Pattern Recognition (Noise Filtering)**:
+    *   Implement a buffer of the last N events (e.g., 10).
+    *   Detect and filter specific noise patterns, such as `DOWN, DOWN, DOWN, UP, DOWN, DOWN` (where the single UP is clearly an anomaly in the flow).
+
 ## Near-Term Goals (Quality of Life & UX)
 
 These are smaller, achievable enhancements focused on improving the user experience and providing more immediate feedback.
