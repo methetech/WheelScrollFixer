@@ -1,3 +1,12 @@
+## 1.3.0 (2025-11-30) - The Brain Update
+
+*   **New Feature (Calibration Wizard)**: Introduced a comprehensive "Mouse Calibration Wizard." This tool analyzes your mouse's unique scroll behavior (glitches, speed, bounce) via global input monitoring and recommends optimized settings automatically.
+*   **New Feature (Physics Check)**: Implemented an "Impossible Reversal" filter. Scroll events in the opposite direction occurring faster than humanly possible (e.g., <50ms) are immediately discarded as noise, without affecting the blocking logic state.
+*   **New Feature (Smart Momentum)**: Dynamic threshold adjustment. The `Direction Change Threshold` is now automatically increased during fast scrolling, making it harder for accidental reversals to register when you have high scroll momentum.
+*   **New Feature (Restore Defaults Button)**: Added a button to instantly reset all main settings to their recommended default values.
+*   **UI Overhaul**: Refactored the Settings Dialog from a tabbed layout back to a single, well-organized panel using `QGroupBox`es for improved clarity and user experience.
+*   **Refactor**: `MouseHook` now supports a calibration callback mechanism, allowing external modules (like the Wizard) to receive raw scroll events for analysis without interference from the main blocking logic.
+
 ## 1.2.0 (2025-11-30)
 
 *   **New Feature (Strict Mode)**: Introduced "Strict Mode" (default: ON). This feature blocks the very first scroll event of a new sequence and waits for a second event in the same direction to confirm user intent. This effectively eliminates "start-of-scroll" glitches where faulty mice send a random signal before the intended movement.

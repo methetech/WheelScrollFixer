@@ -193,6 +193,18 @@ class Settings(IniSettings):
     def set_strict_mode(self, v: bool):
         self.set_value("strict_mode", v)
 
+    def get_min_reversal_interval(self) -> float:
+        return self.value("min_reversal_interval", 0.05, type=float)
+
+    def set_min_reversal_interval(self, v: float):
+        self.set_value("min_reversal_interval", v)
+
+    def get_smart_momentum(self) -> bool:
+        return self.value("smart_momentum", True, type=bool)
+
+    def set_smart_momentum(self, v: bool):
+        self.set_value("smart_momentum", v)
+
     def get_app_profiles(self) -> dict:
         return self.value("app_profiles", {}, type=dict)
 
@@ -230,6 +242,8 @@ class MouseHook:
         self.enabled = self.settings.get_enabled()
         self.direction_change_threshold = self.settings.get_direction_change_threshold()
         self.strict_mode = self.settings.get_strict_mode()
+        self.min_reversal_interval = self.settings.get_min_reversal_interval()
+        self.smart_momentum = self.settings.get_smart_momentum()
         self.pending_start_dir = None
         self.last_dir = None
         self.last_time = 0.0
@@ -241,6 +255,11 @@ class MouseHook:
         self.hook_id = None
         self.hook_cb = None
         self.thread_id = None
+        self.calibration_callback = None
+
+    def set_calibration_callback(self, callback):
+        """Sets a callback function to receive raw scroll events for calibration."""
+        self.calibration_callback = callback
 
     def reload_settings(self, update_tray_icon_callback=None, update_font_callback=None):
         self.block_interval = self.settings.get_interval()
@@ -249,6 +268,8 @@ class MouseHook:
         self.enabled = self.settings.get_enabled()
         self.direction_change_threshold = self.settings.get_direction_change_threshold()
         self.strict_mode = self.settings.get_strict_mode()
+        self.min_reversal_interval = self.settings.get_min_reversal_interval()
+        self.smart_momentum = self.settings.get_smart_momentum()
         self._consecutive_opposite_events = 0
         if update_tray_icon_callback:
             update_tray_icon_callback()
@@ -286,6 +307,17 @@ class MouseHook:
 
         def hook_proc(nCode, wParam, lParam):
             if nCode == 0 and wParam == win32con.WM_MOUSEWHEEL:
+                ms = ctypes.cast(lParam, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
+                delta_short = ctypes.c_short((ms.mouseData >> 16) & 0xFFFF).value
+                current_dir = 1 if delta_short > 0 else -1
+                now = time.time()
+
+                # --- CALIBRATION MODE ---
+                # If a calibration callback is set, pass the raw event and DO NOT BLOCK.
+                if self.calibration_callback:
+                    self.calibration_callback(now, current_dir)
+                    return self.user32.CallNextHookEx(self.hook_id, nCode, wParam, lParam)
+
                 # logging.debug(f"HOOK: Event received. Enabled={self.enabled}")
                 if not self.enabled:
                     return self.user32.CallNextHookEx(self.hook_id, nCode, wParam, lParam)
@@ -294,16 +326,21 @@ class MouseHook:
                     # logging.debug("HOOK: Blacklisted app.")
                     return self.user32.CallNextHookEx(self.hook_id, nCode, wParam, lParam)
 
-                ms = ctypes.cast(lParam, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
-                delta_short = ctypes.c_short((ms.mouseData >> 16) & 0xFFFF).value
-                current_dir = 1 if delta_short > 0 else -1
-                now = time.time()
                 current_block_interval, current_direction_change_threshold = self._get_current_app_settings()
                 
-                logging.debug(f"HOOK: Delta={delta_short}, Dir={current_dir}, LastDir={self.last_dir}, TimeDiff={now - self.last_time:.4f}")
+                time_diff = now - self.last_time
+                logging.debug(f"HOOK: Delta={delta_short}, Dir={current_dir}, LastDir={self.last_dir}, TimeDiff={time_diff:.4f}")
+
+                # --- PHYSICS CHECK (The "Impossible Speed" Filter) ---
+                # If a scroll event happens in the OPPOSITE direction extremely fast (e.g. < 50ms),
+                # it is physically impossible for a human finger. It is 100% noise/bounce.
+                # Block it immediately and DO NOT change any state (don't count it, don't reset timers).
+                if (self.last_dir is not None) and (current_dir != self.last_dir) and (time_diff < self.min_reversal_interval):
+                    logging.debug(f"HOOK: PHYSICS BLOCK (Impossible Reversal: {time_diff:.4f}s < {self.min_reversal_interval}s)")
+                    return 1
 
                 # Check if the current session (blocking interval) has expired
-                if (self.last_dir is not None) and (now - self.last_time >= current_block_interval):
+                if (self.last_dir is not None) and (time_diff >= current_block_interval):
                     self.last_dir = None
                     self.pending_start_dir = None
                     self._consecutive_opposite_events = 0
@@ -350,8 +387,25 @@ class MouseHook:
                     return self.user32.CallNextHookEx(self.hook_id, nCode, wParam, lParam)
                 else:
                     self._consecutive_opposite_events += 1
-                    logging.debug(f"HOOK: CHECK (Opposite Dir) Count={self._consecutive_opposite_events}/{current_direction_change_threshold}")
-                    if self._consecutive_opposite_events >= current_direction_change_threshold:
+                    
+                    # --- MOMENTUM CHECK (Smart Threshold) ---
+                    # Adjust threshold dynamically based on speed.
+                    # time_diff is (now - self.last_time), where self.last_time is the last ALLOWED event.
+                    # Small time_diff = High Speed = Higher Threshold (harder to reverse)
+                    dynamic_threshold = current_direction_change_threshold
+                    momentum_tag = "NORMAL"
+                    
+                    if self.smart_momentum:
+                        if time_diff < 0.10: # Very Fast (< 100ms)
+                            dynamic_threshold += 2
+                            momentum_tag = "FAST(+2)"
+                        elif time_diff < 0.20: # Fast (< 200ms)
+                            dynamic_threshold += 1
+                            momentum_tag = "MED(+1)"
+
+                    logging.debug(f"HOOK: CHECK (Opposite Dir) Speed={momentum_tag} (dt={time_diff:.4f}s) | Count={self._consecutive_opposite_events}/{dynamic_threshold} (Base={current_direction_change_threshold})")
+
+                    if self._consecutive_opposite_events >= dynamic_threshold:
                         self.last_dir = current_dir
                         self.last_time = now
                         self._consecutive_opposite_events = 0
@@ -457,10 +511,10 @@ if __name__ == "__main__":
     if len(sys.argv) > 2 and sys.argv[1] == "--watchdog":
         run_watchdog(sys.argv[2])
     else:
-        # Configure logging to both file and console with DEBUG level
+        # Configure logging to both file and console with INFO level
         log_file = os.path.join(tempfile.gettempdir(), 'scroll_lock_main.log')
         logging.basicConfig(
-            level=logging.DEBUG,
+            level=logging.INFO,
             format='%(asctime)s - %(levelname)s - %(message)s',
             handlers=[
                 logging.FileHandler(log_file, mode='w'),

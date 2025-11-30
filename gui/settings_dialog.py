@@ -6,6 +6,7 @@ from PyQt5 import QtWidgets, QtGui, QtCore
 from .app_profile_dialog import AppProfileDialog
 from .help_dialog import HelpDialog
 from .about_dialog import AboutDialog
+from .calibration_wizard import CalibrationWizardDialog
 
 class SettingsDialog(QtWidgets.QDialog):
     """The main settings dialog for the application."""
@@ -28,17 +29,12 @@ class SettingsDialog(QtWidgets.QDialog):
 
         self._create_widgets()
         self._create_layouts()
+        self._create_main_layout() # Explicit call
         self._connect_signals(configure_startup)
 
     def _create_widgets(self):
         """Creates the widgets for the dialog."""
-        self._create_menu_bar()
-        self._create_blocking_logic_widgets()
-        self._create_app_control_widgets()
-        self._create_general_settings_widgets()
-
-    def _create_menu_bar(self):
-        """Creates the menu bar for the dialog."""
+        # --- Menu Bar ---
         self.menu_bar = QtWidgets.QMenuBar(self)
         help_menu = self.menu_bar.addMenu("&Help")
         act_about = help_menu.addAction("&About")
@@ -51,190 +47,149 @@ class SettingsDialog(QtWidgets.QDialog):
         act_about.triggered.connect(self.show_about_dialog)
         act_documentation.triggered.connect(self.open_website)
         act_help_content.triggered.connect(self.show_help_dialog)
+        
+        # --- Tab 1: General ---
+        self.start_cb = QtWidgets.QCheckBox("Start on boot")
+        self.start_cb.setChecked(self.settings.get_startup())
+        self.start_cb.setToolTip('If checked, the application will start automatically when Windows boots.')
+        
+        self.enabled_cb = QtWidgets.QCheckBox('Enable Scroll Blocking')
+        self.enabled_cb.setChecked(self.settings.get_enabled())
+        self.enabled_cb.setToolTip('Master switch to enable or disable the scroll blocking functionality.')
 
-    def _create_blocking_logic_widgets(self):
-        """Creates the widgets for the blocking logic settings."""
+        self.font_size_spin = QtWidgets.QDoubleSpinBox()
+        self.font_size_spin.setRange(8.0, 24.0)
+        self.font_size_spin.setSingleStep(0.5)
+        self.font_size_spin.setValue(self.settings.get_font_size())
+        self.font_size_spin.setToolTip('Adjust the global font size for the application UI.')
+
+        # --- Tab 2: Sensitivity (Blocking Logic) ---
         self.interval_spin = QtWidgets.QDoubleSpinBox()
         self.interval_spin.setRange(0.05, 5.0)
         self.interval_spin.setSingleStep(0.05)
         self.interval_spin.setValue(self.settings.get_interval())
-        self.interval_spin.setToolTip(
-            'The time interval (in seconds) during which rapid scroll direction changes will be blocked. '
-            'Prevents accidental scrolling.'
-        )
-        self.interval_spin.setWhatsThis(
-            'This setting controls the time window (in seconds) for blocking rapid changes in scroll direction. '
-            'If you scroll in one direction, and then quickly scroll in the opposite direction within this interval, '
-            'the second scroll event will be ignored. This helps prevent "jittery" or accidental scrolling.'
-        )
+        self.interval_spin.setToolTip('The time interval (in seconds) during which rapid scroll direction changes will be blocked.')
 
         self.direction_change_threshold_spin = QtWidgets.QSpinBox()
         self.direction_change_threshold_spin.setRange(1, 10)
         self.direction_change_threshold_spin.setValue(self.settings.get_direction_change_threshold())
-        self.direction_change_threshold_spin.setToolTip(
-            'The number of consecutive opposite scroll events required to re-establish a new scroll direction '
-            'within the block interval.'
-        )
-        self.direction_change_threshold_spin.setWhatsThis(
-            'The number of consecutive opposite scroll events required to "break" the current blocking and '
-            'establish a new scroll direction within the block interval. This allows for deliberate, '
-            'quick changes in scroll direction if you scroll aggressively enough.'
-        )
+        self.direction_change_threshold_spin.setToolTip('Number of opposite scroll events required to change direction.')
 
         self.strict_mode_cb = QtWidgets.QCheckBox("Strict Mode (Ignores first tick)")
         self.strict_mode_cb.setChecked(self.settings.get_strict_mode())
         self.strict_mode_cb.setToolTip('Require two consecutive scrolls in the same direction to start scrolling.')
-        self.strict_mode_cb.setWhatsThis(
-            'If enabled, the very first scroll event of a new sequence is blocked and used as a confirmation check. '
-            'You must scroll twice in the same direction to start scrolling. This fixes "glitchy" mice that '
-            'send a random opposite signal when you start scrolling.'
-        )
 
-    def _create_app_control_widgets(self):
-        """Creates the widgets for the application control settings."""
+        self.min_reversal_spin = QtWidgets.QDoubleSpinBox()
+        self.min_reversal_spin.setRange(0.01, 0.20)
+        self.min_reversal_spin.setSingleStep(0.01)
+        self.min_reversal_spin.setValue(self.settings.get_min_reversal_interval())
+        self.min_reversal_spin.setToolTip('Minimum time (in seconds) required between opposite scroll events (Physics Check).')
+
+        self.smart_momentum_cb = QtWidgets.QCheckBox("Smart Momentum (Dynamic Threshold)")
+        self.smart_momentum_cb.setChecked(self.settings.get_smart_momentum())
+        self.smart_momentum_cb.setToolTip('Automatically increase threshold when scrolling fast.')
+
+        # --- Tab 3: Apps (Blacklist & Profiles) ---
         self.bl_list = QtWidgets.QListWidget()
         self.bl_list.addItems(self.settings.get_blacklist())
-        self.bl_list.setToolTip(
-            'List of application executable names (e.g., chrome.exe) where scroll blocking will be disabled.'
-        )
-        self.bl_list.setWhatsThis(
-            'This list displays application executable names (e.g., chrome.exe, notepad.exe) for which '
-            'the scroll blocking functionality will be completely disabled. This is useful for applications '
-            'where you need precise or unrestricted scrolling.'
-        )
-
+        
         self.bl_add_current_btn = QtWidgets.QPushButton('Add Current App')
-        self.bl_add_current_btn.setToolTip("Add the foreground process.")
-        self.bl_add_current_btn.setWhatsThis(
-            'Click to add the currently focused application\'s executable name to the blacklist so scrolling '
-            'is not blocked in that app.'
-        )
-
         self.bl_remove_btn = QtWidgets.QPushButton("Remove Selected")
-        self.bl_remove_btn.setToolTip("Remove selected blacklist entries.")
-        self.bl_remove_btn.setWhatsThis(
-            'Removes the selected application(s) from the blacklist, re-enabling scroll blocking for them.'
-        )
-
         self.bl_clear_btn = QtWidgets.QPushButton("Clear All")
-        self.bl_clear_btn.setToolTip("Clear blacklist.")
-        self.bl_clear_btn.setWhatsThis(
-            'Clears the entire blacklist. Scroll blocking will apply to all apps unless added again.'
-        )
 
-    def _create_general_settings_widgets(self):
-        """Creates the widgets for the general settings."""
-        self.start_cb = QtWidgets.QCheckBox("Start on boot")
-        self.start_cb.setChecked(self.settings.get_startup())
-        self.start_cb.setToolTip('If checked, the application will start automatically when Windows boots.')
-        self.start_cb.setWhatsThis(
-            'If checked, the main application and its child watchdog process will start automatically '
-            'when Windows boots. This ensures the scroll blocking functionality is always active.'
-        )
+        self.app_profiles_list = QtWidgets.QListWidget()
+        self.add_profile_btn = QtWidgets.QPushButton('Add Profile')
+        self.edit_profile_btn = QtWidgets.QPushButton('Edit Profile')
+        self.remove_profile_btn = QtWidgets.QPushButton('Remove Profile')
 
-        self.enabled_cb = QtWidgets.QCheckBox('Enable Scroll Blocking')
-        self.enabled_cb.setChecked(self.settings.get_enabled())
-        self.enabled_cb.setToolTip('Master switch to enable or disable the scroll blocking functionality.')
-        self.enabled_cb.setWhatsThis(
-            'This is a master switch to globally enable or disable the scroll blocking functionality. '
-            'When unchecked, no scroll events will be blocked, regardless of other settings.'
-        )
-
-        self.font_size_spin = QtWidgets.QDoubleSpinBox()
-        self.font_size_spin.setRange(8.0, 24.0) # Reasonable font size range
-        self.font_size_spin.setSingleStep(0.5)
-        self.font_size_spin.setValue(self.settings.get_font_size())
-        self.font_size_spin.setToolTip('Adjust the global font size for the application UI.')
-        self.font_size_spin.setWhatsThis(
-            'Adjust the global font size for the application user interface. This affects the size of text '
-            'and elements within the application windows.'
-        )
-
+        # --- Actions (Bottom) ---
         self.save_btn = QtWidgets.QPushButton('Save')
         self.save_btn.setToolTip("Save all settings.")
-        self.save_btn.setWhatsThis('Saves all changes to persistent settings, applies them immediately to the running hook, and updates the tray UI as needed.')
-
+        
         self.status_label = QtWidgets.QLabel("")
         self.status_label.setAlignment(QtCore.Qt.AlignCenter)
         self.status_label.setStyleSheet("color: #2e7d32; font-weight: bold; margin-top: 5px;")
 
     def _create_layouts(self):
         """Creates the layouts for the dialog."""
-        self._create_blocking_logic_layout()
-        self._create_app_control_layout()
-        self._create_general_settings_layout()
-        self._create_app_profiles_layout()
-        self._create_main_layout()
-
-    def _create_blocking_logic_layout(self):
-        """Creates the layout for the blocking logic settings."""
-        blocking_group = QtWidgets.QGroupBox("Blocking Logic")
-        blocking_group.setWhatsThis('Parameters that control how scroll blocking behaves.')
+        # --- Blocking Logic Group ---
+        blocking_group = QtWidgets.QGroupBox("Blocking Logic & Sensitivity")
         blocking_layout = QtWidgets.QFormLayout()
         blocking_layout.addRow("Block interval (s):", self.interval_spin)
-        blocking_layout.addRow("Direction change threshold:", self.direction_change_threshold_spin)
+        blocking_layout.addRow("Direction threshold:", self.direction_change_threshold_spin)
+        blocking_layout.addRow("Min Reversal Time (s):", self.min_reversal_spin)
         blocking_layout.addRow(self.strict_mode_cb)
+        blocking_layout.addRow(self.smart_momentum_cb)
         blocking_group.setLayout(blocking_layout)
         self.blocking_group = blocking_group
 
-    def _create_app_control_layout(self):
-        """Creates the layout for the application control settings."""
+        # --- Application Control Group ---
         app_control_group = QtWidgets.QGroupBox("Application Control")
-        app_control_group.setWhatsThis('Manage where the blocker is disabled (blacklist).')
         app_control_layout = QtWidgets.QVBoxLayout()
+        
+        # Blacklist
+        bl_layout = QtWidgets.QHBoxLayout()
+        bl_layout.addWidget(QtWidgets.QLabel("Blacklist:"))
+        bl_layout.addWidget(self.bl_add_current_btn)
+        bl_layout.addWidget(self.bl_remove_btn)
+        bl_layout.addWidget(self.bl_clear_btn)
+        app_control_layout.addLayout(bl_layout)
         app_control_layout.addWidget(self.bl_list)
-        bl_buttons_layout = QtWidgets.QHBoxLayout()
-        bl_buttons_layout.addWidget(self.bl_add_current_btn)
-        bl_buttons_layout.addWidget(self.bl_remove_btn)
-        bl_buttons_layout.addWidget(self.bl_clear_btn)
-        app_control_layout.addLayout(bl_buttons_layout)
+        
+        # Profiles
+        prof_layout = QtWidgets.QHBoxLayout()
+        prof_layout.addWidget(QtWidgets.QLabel("Profiles:"))
+        prof_layout.addWidget(self.add_profile_btn)
+        prof_layout.addWidget(self.edit_profile_btn)
+        prof_layout.addWidget(self.remove_profile_btn)
+        app_control_layout.addLayout(prof_layout)
+        app_control_layout.addWidget(self.app_profiles_list)
+        
         app_control_group.setLayout(app_control_layout)
         self.app_control_group = app_control_group
 
-    def _create_general_settings_layout(self):
-        """Creates the layout for the general settings."""
-        general_settings_group = QtWidgets.QGroupBox("General Settings")
-        general_settings_group.setWhatsThis('Startup behavior, master enable, and UI font size.')
-        general_settings_layout = QtWidgets.QFormLayout()
-        general_settings_layout.addRow(self.start_cb)
-        general_settings_layout.addRow(self.enabled_cb)
-        general_settings_layout.addRow("Font size (pt):", self.font_size_spin)
-
-
-
-        general_settings_group.setLayout(general_settings_layout)
-        self.general_settings_group = general_settings_group
-
-    def _create_app_profiles_layout(self):
-        """Creates the layout for the application profiles settings."""
-        app_profiles_group = QtWidgets.QGroupBox("Application Profiles")
-        app_profiles_group.setWhatsThis(
-            'Define custom scroll blocking settings for specific applications.'
-        )
-        app_profiles_layout = QtWidgets.QVBoxLayout()
-        self.app_profiles_list = QtWidgets.QListWidget()
-        app_profiles_layout.addWidget(self.app_profiles_list)
-        app_profiles_buttons_layout = QtWidgets.QHBoxLayout()
-        self.add_profile_btn = QtWidgets.QPushButton('Add Profile')
-        self.edit_profile_btn = QtWidgets.QPushButton('Edit Profile')
-        self.remove_profile_btn = QtWidgets.QPushButton('Remove Profile')
-        app_profiles_buttons_layout.addWidget(self.add_profile_btn)
-        app_profiles_buttons_layout.addWidget(self.edit_profile_btn)
-        app_profiles_buttons_layout.addWidget(self.remove_profile_btn)
-        app_profiles_layout.addLayout(app_profiles_buttons_layout)
-        app_profiles_group.setLayout(app_profiles_layout)
-        self.app_profiles_group = app_profiles_group
+        # --- General Settings Group ---
+        general_group = QtWidgets.QGroupBox("General")
+        general_layout = QtWidgets.QHBoxLayout()
+        general_layout.addWidget(self.enabled_cb)
+        general_layout.addWidget(self.start_cb)
+        
+        font_layout = QtWidgets.QHBoxLayout()
+        font_layout.addWidget(QtWidgets.QLabel("Font Size:"))
+        font_layout.addWidget(self.font_size_spin)
+        
+        general_layout.addLayout(font_layout)
+        general_group.setLayout(general_layout)
+        self.general_settings_group = general_group
 
     def _create_main_layout(self):
         """Creates the main layout for the dialog."""
-        form = QtWidgets.QFormLayout(self)
+        form = QtWidgets.QVBoxLayout(self)
         form.setMenuBar(self.menu_bar)
-        form.addRow(self.blocking_group)
-        form.addRow(self.app_control_group)
-        form.addRow(self.app_profiles_group)
-        form.addRow(self.general_settings_group)
-        form.addRow(self.save_btn)
-        form.addRow(self.status_label)
+        
+        # Layout Order
+        form.addWidget(self.blocking_group)
+        form.addWidget(self.app_control_group)
+        form.addWidget(self.general_settings_group)
+        
+        # Bottom Action Area
+        bottom_layout = QtWidgets.QHBoxLayout()
+        
+        # Add Calibration Wizard Button
+        self.calibration_btn = QtWidgets.QPushButton("Calibration Wizard")
+        self.calibration_btn.setStyleSheet("background-color: #673AB7; color: white;") # Purple accent
+        bottom_layout.addWidget(self.calibration_btn)
+
+        # Add Restore Defaults Button
+        self.defaults_btn = QtWidgets.QPushButton("Restore Defaults")
+        self.defaults_btn.setToolTip("Reset all settings to the recommended defaults.")
+        bottom_layout.addWidget(self.defaults_btn)
+        
+        bottom_layout.addStretch() # Spacer
+        bottom_layout.addWidget(self.save_btn)
+        
+        form.addLayout(bottom_layout)
+        form.addWidget(self.status_label)
 
     def _connect_signals(self, configure_startup):
         """Connects the signals for the dialog."""
@@ -250,6 +205,8 @@ class SettingsDialog(QtWidgets.QDialog):
         self.add_profile_btn.clicked.connect(self.add_app_profile)
         self.edit_profile_btn.clicked.connect(self.edit_app_profile)
         self.remove_profile_btn.clicked.connect(self.remove_app_profile)
+        self.calibration_btn.clicked.connect(self.run_calibration_wizard)
+        self.defaults_btn.clicked.connect(self.restore_defaults)
 
     def minimize_to_tray(self):
         self.hide()
@@ -267,6 +224,8 @@ class SettingsDialog(QtWidgets.QDialog):
             'interval': self.interval_spin.value(),
             'threshold': self.direction_change_threshold_spin.value(),
             'strict_mode': self.strict_mode_cb.isChecked(),
+            'min_reversal': self.min_reversal_spin.value(),
+            'smart_momentum': self.smart_momentum_cb.isChecked(),
             'blacklist': [self.bl_list.item(i).text() for i in range(self.bl_list.count())],
             'startup': self.start_cb.isChecked(),
             'enabled': self.enabled_cb.isChecked(),
@@ -277,6 +236,8 @@ class SettingsDialog(QtWidgets.QDialog):
             'interval': self.settings.get_interval(),
             'threshold': self.settings.get_direction_change_threshold(),
             'strict_mode': self.settings.get_strict_mode(),
+            'min_reversal': self.settings.get_min_reversal_interval(),
+            'smart_momentum': self.settings.get_smart_momentum(),
             'blacklist': self.settings.get_blacklist(),
             'startup': self.settings.get_startup(),
             'enabled': self.settings.get_enabled(),
@@ -300,6 +261,8 @@ class SettingsDialog(QtWidgets.QDialog):
                 self.interval_spin.setValue(saved_settings['interval'])
                 self.direction_change_threshold_spin.setValue(saved_settings['threshold'])
                 self.strict_mode_cb.setChecked(saved_settings['strict_mode'])
+                self.min_reversal_spin.setValue(saved_settings['min_reversal'])
+                self.smart_momentum_cb.setChecked(saved_settings['smart_momentum'])
                 self.bl_list.clear()
                 self.bl_list.addItems(saved_settings['blacklist'])
                 self.start_cb.setChecked(saved_settings['startup'])
@@ -444,6 +407,56 @@ class SettingsDialog(QtWidgets.QDialog):
         """Applies the settings to the application."""
         self.update_font_callback()
 
+    def run_calibration_wizard(self):
+        wizard = CalibrationWizardDialog(self)
+        
+        # Connect global hook to wizard
+        self.hook.set_calibration_callback(wizard.process_scroll_event)
+        
+        result = wizard.exec_()
+        
+        # Disconnect hook
+        self.hook.set_calibration_callback(None)
+
+        if result == QtWidgets.QDialog.Accepted:
+            results = wizard.get_results()
+            if results:
+                # Apply settings to UI
+                self.interval_spin.setValue(results['interval'])
+                self.direction_change_threshold_spin.setValue(results['threshold'])
+                self.strict_mode_cb.setChecked(results['strict'])
+                self.min_reversal_spin.setValue(results['min_reversal'])
+                self.smart_momentum_cb.setChecked(results['smart'])
+                
+                # Auto-save applied settings
+                self.save_btn.click()
+                
+                QtWidgets.QMessageBox.information(
+                    self, "Calibration Complete", 
+                    "Settings have been optimized for your mouse!"
+                )
+
+    def restore_defaults(self):
+        """Restores settings to the 'Golden Default' values."""
+        reply = QtWidgets.QMessageBox.question(
+            self, "Confirm Reset", 
+            "Are you sure you want to restore the default settings?\n"
+            "(Threshold: 2, Interval: 0.30s, Strict Mode: ON, Physics: 0.05s, Smart Momentum: ON)",
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
+        )
+        
+        if reply == QtWidgets.QMessageBox.Yes:
+            self.interval_spin.setValue(0.30)
+            self.direction_change_threshold_spin.setValue(2)
+            self.strict_mode_cb.setChecked(True)
+            self.min_reversal_spin.setValue(0.05)
+            self.smart_momentum_cb.setChecked(True)
+            self.enabled_cb.setChecked(True)
+            
+            # Auto-save
+            self.save_btn.click()
+            self.status_label.setText("Restored to defaults successfully.")
+
     def save(self, configure_startup):
         """Saves all settings and applies them live."""
         self.settings.set_interval(self.interval_spin.value())
@@ -455,6 +468,8 @@ class SettingsDialog(QtWidgets.QDialog):
         self.settings.set_enabled(self.enabled_cb.isChecked())
         self.settings.set_direction_change_threshold(self.direction_change_threshold_spin.value())
         self.settings.set_strict_mode(self.strict_mode_cb.isChecked())
+        self.settings.set_min_reversal_interval(self.min_reversal_spin.value())
+        self.settings.set_smart_momentum(self.smart_momentum_cb.isChecked())
         self.settings.set_font_size(self.font_size_spin.value())
 
 

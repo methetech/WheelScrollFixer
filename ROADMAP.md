@@ -2,42 +2,13 @@
 
 This document outlines the future direction and potential features for WheelScrollFixer. It's a living document intended to guide development and inspire contributions. If you're looking for a way to contribute, picking up an item from this list is a great place to start!
 
-## Next Up: Heuristic & Smart Analysis (The "Brain" Update)
+## Next Up: The Brain Update (v1.3.0) - *COMPLETED!*
 
-These features aim to move beyond simple counting logic to "intelligent" signal processing, making the blocker indistinguishable from magic.
+*   **Calibration Wizard**: A comprehensive, interactive diagnostics tool that analyzes your mouse's unique scroll behavior (glitches, speed, bounce) via global input monitoring and recommends optimized settings automatically.
+*   **Physics Check**: Implemented an "Impossible Reversal" filter. Scroll events in the opposite direction occurring faster than humanly possible (e.g., <50ms) are immediately discarded as noise, without affecting the blocking logic state.
+*   **Smart Momentum**: Dynamic threshold adjustment. The `Direction Change Threshold` is now automatically increased during fast scrolling, making it harder for accidental reversals to register when you have high scroll momentum.
 
-*   [ ] **Physics/Speed Check ("Impossible Reversal")**:
-    *   Implement a check for "impossible" physical movements. If a scroll reversal occurs within an extremely short timeframe (e.g., <15ms) after a scroll event, it is physically impossible for a human finger to have stopped and reversed the wheel. These should be instantly discarded as noise without counting against the threshold.
-*   [ ] **Momentum-Based Dynamic Thresholding**:
-    *   **Fast Scroll Detection**: If the user is scrolling very fast (high momentum), increase the *Direction Change Threshold* automatically (e.g., from 2 to 4). It is highly unlikely a user wants to reverse direction instantly while spinning the wheel fast.
-    *   **Slow Scroll Detection**: If the user is scrolling slowly (reading mode), decrease the threshold to allow for more responsive, deliberate direction changes.
-*   [ ] **Pattern Recognition (Noise Filtering)**:
-    *   Implement a buffer of the last N events (e.g., 10).
-    *   Detect and filter specific noise patterns, such as `DOWN, DOWN, DOWN, UP, DOWN, DOWN` (where the single UP is clearly an anomaly in the flow).
-
-## Near-Term Goals (Quality of Life & UX)
-
-These are smaller, achievable enhancements focused on improving the user experience and providing more immediate feedback.
-
-*   [ ] **Dynamic Tray Icon Tooltip**: Update the system tray icon's tooltip to show the current status (e.g., "Enabled - Global Profile", "Disabled", "Enabled - chrome.exe Profile").
-*   [ ] **Dynamic Tray Icon Visuals**: Change the tray icon's appearance (e.g., gray it out) when scroll blocking is disabled.
-*   [ ] **"Live Stats" View**: Add a new tab or window that shows real-time debug information, such as:
-    *   The currently detected foreground application.
-    *   The active profile (Global or app-specific).
-    *   Live counters for blocked scroll events.
-*   [ ] **UI Theming**: Add a simple Light/Dark mode toggle to respect user system settings.
-*   [ ] **Configuration Import/Export**: Allow users to back up their complete settings (global, blacklist, profiles) to a single file and restore them.
-
-## Mid-Term Goals (Core Feature Enhancements)
-
-These features expand the core functionality of the application, turning it into a more comprehensive mouse utility.
-
-*   [ ] **Advanced Scrolling Control**:
-    *   **Scroll Reversal**: Add a per-profile option to reverse the scroll direction ("Natural Scrolling").
-    *   **Scroll Acceleration**: Allow users to define a custom scroll acceleration curve.
-*   [ ] **Horizontal Scrolling Support**: Extend the hook and blocking logic to the mouse tilt-wheel (`WM_MOUSEHWHEEL`).
-*   [ ] **Enhanced Profile Detection**: Allow profiles to be triggered not just by `exe` name, but also by window title, for more granular control (e.g., different settings for different websites within a browser).
-*   [ ] **Localization (i18n)**: Refactor the UI strings into a format that allows for community-contributed translations into other languages.
+---
 
 ## Long-Term & Ambitious Goals (Major New Functionality)
 
@@ -60,6 +31,18 @@ These are transformative features that would significantly expand the scope of t
 Improvements related to how the application is built, packaged, and updated.
 
 *   [ ] **Automatic Update Checker**: Implement a feature that periodically checks the GitHub Releases page for a new version and notifies the user.
+
+---
+
+## v2.0 Goal: Continuous Learning & Self-Optimization
+
+This is the ultimate goal for making WheelScrollFixer truly "smart."
+
+*   [ ] **Adaptive Settings**: The application continuously monitors your actual mouse usage and blocked events in the background.
+*   [ ] **Confidence Score**: Display a "Confidence Score" for the current settings, indicating how well they are suppressing jitters without interfering with intentional scrolling.
+*   [ ] **Contextual Learning**: Distinguish between accidental glitches during normal usage and deliberate actions.
+*   [ ] **Proactive Optimization**: Based on long-term data, the application will periodically suggest (or automatically apply with user consent) further fine-tuned adjustments to `Interval`, `Threshold`, `Strict Mode`, `Physics Check`, and `Smart Momentum` settings.
+*   [ ] **"Learning Mode" Toggle**: A user-facing option to enable/disable background data collection for privacy and performance.
 
 ---
 
