@@ -1,47 +1,57 @@
+## 1.4.0 (2025-12-01) - The Enterprise Update (Stability & Performance)
+
+*   **Core Refactor (Thread Safety)**: Implemented "Atomic Snapshot" pattern in the mouse hook engine. This eliminates race conditions between the GUI and the background thread, preventing crashes when changing settings rapidly.
+*   **Robustness Overhaul**:
+    *   **Exception-Safe Hook**: The hook callback is now wrapped in a safety block. If an internal error occurs, it logs the critical failure but ensures the mouse input chain is NOT broken (no more frozen mouse).
+    *   **Registry Safety**: "Start on Boot" logic now gracefully handles permission errors (e.g., Antivirus blocks), preventing application crashes.
+*   **Calibration Logic 2.0**:
+    *   Replaced naive min/max logic with **Statistical Percentiles**. The wizard now intelligently ignores outliers (accidental user errors or one-off glitches) to provide accurate recommendations.
+*   **Configuration Modernization**:
+    *   Migrated from `.ini` to `.json` for settings storage.
+    *   **Auto-Migration**: Automatically converts old `.ini` files to the new format without data loss.
+*   **Bug Fixes**:
+    *   **Zombie App Fix**: Solved a race condition where the Watchdog process would restart the app after the user clicked "Exit". The app now explicitly waits for the watchdog to terminate.
+    *   **Monkey Patch Removal**: Refactored the UI language update mechanism to use proper Qt Signals & Slots.
+*   **Dev**: Added initial unit test suite (`tests/test_core.py`) for core logic verification.
+
+## 1.3.1 (2025-11-30) - The Brain Update (Visual Polish)
+
+*   **New Feature (Calibration Wizard 2.0)**: The calibration wizard has been completely overhauled with a visual-first approach.
+    *   **Live Signal Visualizer**: A real-time oscilloscope-style graph shows your mouse's raw input signals (green for down, red for up) as you scroll, making it easy to spot glitches visually.
+    *   **Animated Instructions**: Static text has been replaced with dynamic animations (falling arrows, flashing stop signs, speedometers) to guide you through each test phase.
+    *   **Extended Testing**: The test phases (Flow, Sprint, Brake, Precision) have been lengthened to collect more statistically significant data.
+    *   **Enhanced Analysis**: The recommendation engine now uses more robust math to calculate optimal settings based on the extended dataset.
+*   **UI Improvement**: The settings dialog has been reverted to a cleaner, single-panel layout organized with GroupBoxes, replacing the tabbed interface for better usability.
+*   **Fix**: Resolved layout initialization issues that caused crashes when opening the settings dialog.
+
 ## 1.3.0 (2025-11-30) - The Brain Update
 
-*   **New Feature (Calibration Wizard)**: Introduced a comprehensive "Mouse Calibration Wizard." This tool analyzes your mouse's unique scroll behavior (glitches, speed, bounce) via global input monitoring and recommends optimized settings automatically.
-*   **New Feature (Physics Check)**: Implemented an "Impossible Reversal" filter. Scroll events in the opposite direction occurring faster than humanly possible (e.g., <50ms) are immediately discarded as noise, without affecting the blocking logic state.
-*   **New Feature (Smart Momentum)**: Dynamic threshold adjustment. The `Direction Change Threshold` is now automatically increased during fast scrolling, making it harder for accidental reversals to register when you have high scroll momentum.
+*   **New Feature (Physics Check)**: Implemented an "Impossible Reversal" filter. Scroll events in the opposite direction occurring faster than humanly possible (e.g., <50ms) are immediately discarded as noise.
+*   **New Feature (Smart Momentum)**: Dynamic threshold adjustment. The `Direction Change Threshold` is now automatically increased during fast scrolling.
+*   **New Feature (Strict Mode)**: Blocks the very first scroll event of a new sequence to confirm user intent.
 *   **New Feature (Restore Defaults Button)**: Added a button to instantly reset all main settings to their recommended default values.
-*   **UI Overhaul**: Refactored the Settings Dialog from a tabbed layout back to a single, well-organized panel using `QGroupBox`es for improved clarity and user experience.
-*   **Refactor**: `MouseHook` now supports a calibration callback mechanism, allowing external modules (like the Wizard) to receive raw scroll events for analysis without interference from the main blocking logic.
+*   **Refactor**: `MouseHook` now supports a calibration callback mechanism.
 
 ## 1.2.0 (2025-11-30)
 
-*   **New Feature (Strict Mode)**: Introduced "Strict Mode" (default: ON). This feature blocks the very first scroll event of a new sequence and waits for a second event in the same direction to confirm user intent. This effectively eliminates "start-of-scroll" glitches where faulty mice send a random signal before the intended movement.
-*   **UX Improvement (Unsaved Changes)**: The settings dialog now detects unsaved changes and prompts the user to save, discard, or cancel when attempting to close the window without saving.
-*   **UI Improvement**: Added a status label to the settings dialog that provides visual confirmation ("Settings saved successfully") instead of an intrusive popup alert.
-*   **Refactor**: Enabled "Strict Mode" by default for new installations as it provides the most robust solution for jittery mouse wheels.
-*   **Refactor**: Standardized logging format for better debugging.
+*   **New Feature (Strict Mode)**: Introduced "Strict Mode".
+*   **UX Improvement (Unsaved Changes)**: Added unsaved changes prompt.
+*   **UI Improvement**: Replaced save popup with a status label.
 
 ## 1.0.3 (2025-11-22)
 
-*   **BREAKING**: Renamed main script from `wheel.py` to `WheelScrollFixer.py` for consistency.
-*   **Fix**: Fixed critical 64-bit compatibility issues with ctypes definitions (LRESULT, WPARAM, LPARAM).
-*   **Fix**: Implemented auto-elevation to Administrator privileges for proper low-level hook functionality.
-*   **Fix**: Resolved SetWindowsHookEx Error 126 by correctly setting hMod parameter to NULL for WH_MOUSE_LL.
-*   **Fix**: Fixed OverflowError in CallNextHookEx by explicitly defining argtypes for 64-bit pointers.
-*   **Fix**: Implemented missing get_foreground_process_name function for per-app profiles.
-*   **Improvement**: Replaced debug print statements with proper logging for cleaner production operation.
-*   **Docs**: Updated all documentation to reflect new filename (WheelScrollFixer.py/exe).
+*   **BREAKING**: Renamed main script to `WheelScrollFixer.py`.
+*   **Fixes**: Critical 64-bit compatibility, auto-elevation, hook error 126.
 
 ## 1.0.2 (2025-11-10)
 
-*   Fix: Implemented atomic saving for settings to prevent data corruption and race conditions.
-*   Fix: Re-implemented watchdog process for robust application monitoring and automatic restarts.
-*   Fix: Resolved ImportError by correctly configuring the 'gui' package with __init__.py.
-*   Fix: Corrected SyntaxError in stylesheet and invalid escape sequence in mutex name.
-*   Fix: Added missing apply_settings method to SettingsDialog class.
-*   Feat: Packaged application into a single executable (wheel.exe) using PyInstaller.
-
-# Changelog
+*   Fixes: Atomic saving, watchdog, import errors.
+*   Feat: Single executable packaging.
 
 ## 1.0.1 (2025-10-14)
 
-*   Fix: Add --no-watchdog flag to prevent the app from restarting automatically.
-*   Chore: Move Settings.ini to config/ directory.
+*   Fix: --no-watchdog flag.
 
 ## 1.0.0 (2025-10-14)
 
-*   Initial release of WheelScrollFixer.
+*   Initial release.

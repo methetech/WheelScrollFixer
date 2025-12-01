@@ -36,3 +36,9 @@ venv/
 
 # User configuration
 config/
+
+# Backup of legacy files
+legacy_backup/
+
+# Test Files
+tests/

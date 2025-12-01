@@ -7,6 +7,7 @@ import winreg
 import os
 import subprocess
 import logging
+import json
 import configparser
 import ctypes
 import ast
@@ -25,6 +26,7 @@ from PyQt5 import QtWidgets, QtGui, QtCore
 from app_context import AppContext
 from gui import SettingsDialog, HelpDialog, AboutDialog
 from utils import get_foreground_process_name
+from localization import translator
 
 class MSLLHOOKSTRUCT(ctypes.Structure):
     _fields_ = [
@@ -36,49 +38,103 @@ class MSLLHOOKSTRUCT(ctypes.Structure):
     ]
 
 # =========================
-# Custom INI Settings Class
+# Modern JSON Settings Class
 # =========================
-class IniSettings:
-    """A custom INI file settings manager."""
-    def __init__(self, org_name, app_name):
-        """Initializes the settings, loading from the INI file."""
-        self.file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", f"{app_name}.ini")
-        self.config = configparser.ConfigParser()
+class JsonSettings:
+    """A modern JSON file settings manager with INI migration support."""
+    def __init__(self, app_name):
+        """Initializes the settings, loading from JSON (or migrating from INI)."""
+        if getattr(sys, 'frozen', False):
+            base_path = os.path.dirname(sys.executable)
+        else:
+            base_path = os.path.dirname(os.path.abspath(__file__))
+
+        self.config_dir = os.path.join(base_path, "config")
+        self.json_path = os.path.join(self.config_dir, f"{app_name}.json")
+        self.ini_path = os.path.join(self.config_dir, f"{app_name}.ini")
+        
+        self.data = {}
         self._load_settings()
 
     def _load_settings(self):
-        """Loads settings from the INI file if it exists."""
-        if os.path.exists(self.file_path):
-            self.config.read(self.file_path)
+        """Loads settings from JSON. Migrates from INI if JSON is missing."""
+        if os.path.exists(self.json_path):
+            try:
+                with open(self.json_path, 'r', encoding='utf-8') as f:
+                    self.data = json.load(f)
+            except Exception as e:
+                logging.error(f"Failed to load JSON settings: {e}")
+                self.data = {}
+        elif os.path.exists(self.ini_path):
+            logging.info("Migrating legacy INI settings to JSON...")
+            self._migrate_from_ini()
+
+    def _migrate_from_ini(self):
+        """Migrates data from the legacy INI file to the new JSON format."""
+        try:
+            config = configparser.ConfigParser()
+            config.read(self.ini_path)
+            
+            new_data = {}
+            for section in config.sections():
+                new_data[section] = {}
+                for key, val in config.items(section):
+                    # Attempt to convert types using ast.literal_eval
+                    try:
+                        # Only eval if it looks like a structure or number
+                        if val.lower() in ['true', 'false']:
+                            val_conv = (val.lower() == 'true')
+                        else:
+                            try:
+                                val_conv = ast.literal_eval(val)
+                            except (ValueError, SyntaxError):
+                                val_conv = val
+                        new_data[section][key] = val_conv
+                    except Exception:
+                        new_data[section][key] = val
+            
+            self.data = new_data
+            self.sync() # Save as JSON
+            
+            # Rename old INI to .bak
+            try:
+                os.rename(self.ini_path, self.ini_path + ".bak")
+                logging.info("Migration successful. Legacy INI renamed to .bak.")
+            except OSError:
+                pass
+        except Exception as e:
+            logging.error(f"Migration failed: {e}")
 
     def value(self, key, default=None, type=None):
         """Retrieves a value from the settings."""
         section, option = self._parse_key(key)
-        if self.config.has_option(section, option):
-            val = self.config.get(section, option)
-            if type == int:
-                return int(val)
-            elif type == float:
-                return float(val)
-            elif type == bool:
+        val = self.data.get(section, {}).get(option, default)
+        
+        # JSON usually preserves types, but we ensure basic consistency if requested
+        if val is None:
+            return default
+            
+        if type == int:
+            return int(val)
+        elif type == float:
+            return float(val)
+        elif type == bool:
+            if isinstance(val, str):
                 return val.lower() == 'true'
-            elif type == list:
-                return ast.literal_eval(val) if val else [] # Safely evaluate list string
-            elif type == dict:
-                return ast.literal_eval(val) if val else {}
-            return val
-        return default
+            return bool(val)
+        elif type == list:
+            return val if isinstance(val, list) else []
+        elif type == dict:
+            return val if isinstance(val, dict) else {}
+            
+        return val
 
     def set_value(self, key, value):
         """Sets a value in the settings."""
         section, option = self._parse_key(key)
-        if not self.config.has_section(section):
-            self.config.add_section(section)
-        
-        if isinstance(value, (list, dict)):
-            self.config.set(section, option, repr(value))
-        else:
-            self.config.set(section, option, str(value))
+        if section not in self.data:
+            self.data[section] = {}
+        self.data[section][option] = value
 
     def _parse_key(self, key):
         """Parses a key into a section and option."""
@@ -88,15 +144,15 @@ class IniSettings:
         return 'General', key
 
     def sync(self):
-        """Saves the settings to the INI file atomically."""
-        os.makedirs(os.path.dirname(self.file_path), exist_ok=True)
-        temp_file_path = self.file_path + '.tmp'
+        """Saves the settings to the JSON file atomically."""
+        os.makedirs(os.path.dirname(self.json_path), exist_ok=True)
+        temp_file_path = self.json_path + '.tmp'
         try:
-            with open(temp_file_path, 'w', encoding='utf-8') as configfile:
-                self.config.write(configfile)
-            os.replace(temp_file_path, self.file_path)
+            with open(temp_file_path, 'w', encoding='utf-8') as f:
+                json.dump(self.data, f, indent=4)
+            os.replace(temp_file_path, self.json_path)
         except Exception as e:
-            print(f"Error saving settings: {e}")
+            logging.error(f"Error saving settings: {e}")
             if os.path.exists(temp_file_path):
                 os.remove(temp_file_path)
 
@@ -146,10 +202,10 @@ class SingleInstance:
 # ===============
 # App Settings
 # ===============
-class Settings(IniSettings):
-    """Manages application-specific settings."""
+class Settings(JsonSettings):
+    """Manages application-specific settings using JSON backend."""
     def __init__(self):
-        super().__init__("ScrollLockApp", "Settings")
+        super().__init__("WheelScrollFixer")
 
     def get_interval(self) -> float:
         return self.value("block_interval", 0.3, type=float)
@@ -210,23 +266,44 @@ class Settings(IniSettings):
 
     def set_app_profiles(self, v: dict):
         self.set_value("app_profiles", v)
+        
+    def get_language(self) -> str:
+        return self.value("language", "en", type=str)
+
+    def set_language(self, v: str):
+        self.set_value("language", v)
 
 # ===========================
 # Windows Startup Management
 # ===========================
 def configure_startup(enable: bool):
-    """Create or remove HKCU Run entry for this script."""
+    """
+    Create or remove HKCU Run entry for this script.
+    Returns True if successful, False if failed (e.g. permission denied).
+    """
     run_key = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
     name = "ScrollLockApp"
-    path = f'"{os.path.abspath(sys.executable)}" "{os.path.abspath(__file__)}"'
-    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, run_key, 0, winreg.KEY_WRITE) as key:
-        if enable:
-            winreg.SetValueEx(key, name, 0, winreg.REG_SZ, path)
-        else:
-            try:
-                winreg.DeleteValue(key, name)
-            except FileNotFoundError:
-                pass
+    
+    if getattr(sys, 'frozen', False):
+        # If frozen (exe), point to the executable itself
+        path = f'"{os.path.abspath(sys.executable)}"'
+    else:
+        # If script, point to python interpreter + script
+        path = f'"{os.path.abspath(sys.executable)}" "{os.path.abspath(__file__)}"'
+
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, run_key, 0, winreg.KEY_WRITE) as key:
+            if enable:
+                winreg.SetValueEx(key, name, 0, winreg.REG_SZ, path)
+            else:
+                try:
+                    winreg.DeleteValue(key, name)
+                except FileNotFoundError:
+                    pass
+        return True
+    except OSError as e:
+        logging.error(f"Failed to configure startup (Permission/AV block?): {e}")
+        return False
 
 # =======================
 # Low-Level Mouse Hooker
@@ -236,64 +313,84 @@ from utils import get_foreground_process_name
 class MouseHook:
     def __init__(self, settings: Settings):
         self.settings = settings
-        self.block_interval = self.settings.get_interval()
-        self.blacklist = self.settings.get_blacklist()
-        self.app_profiles = self.settings.get_app_profiles()
-        self.enabled = self.settings.get_enabled()
-        self.direction_change_threshold = self.settings.get_direction_change_threshold()
-        self.strict_mode = self.settings.get_strict_mode()
-        self.min_reversal_interval = self.settings.get_min_reversal_interval()
-        self.smart_momentum = self.settings.get_smart_momentum()
-        self.pending_start_dir = None
-        self.last_dir = None
-        self.last_time = 0.0
-        self._consecutive_opposite_events = 0
-        self.blocked_up = 0
-        self.blocked_down = 0
         self.user32 = ctypes.windll.user32
         self.kernel32 = ctypes.windll.kernel32
         self.hook_id = None
         self.hook_cb = None
         self.thread_id = None
         self.calibration_callback = None
+        
+        # Caching for process name
+        self.last_hwnd = None
+        self.last_app_name = None
+
+        # Logic State
+        self.pending_start_dir = None
+        self.last_dir = None
+        self.last_time = 0.0
+        self._consecutive_opposite_events = 0
+        self.blocked_up = 0
+        self.blocked_down = 0
+
+        # Thread-Safe Config Snapshot (Atomic Swap)
+        self.config_snapshot = {}
+        self.reload_settings()
 
     def set_calibration_callback(self, callback):
         """Sets a callback function to receive raw scroll events for calibration."""
         self.calibration_callback = callback
 
     def reload_settings(self, update_tray_icon_callback=None, update_font_callback=None):
-        self.block_interval = self.settings.get_interval()
-        self.blacklist = self.settings.get_blacklist()
-        self.app_profiles = self.settings.get_app_profiles()
-        self.enabled = self.settings.get_enabled()
-        self.direction_change_threshold = self.settings.get_direction_change_threshold()
-        self.strict_mode = self.settings.get_strict_mode()
-        self.min_reversal_interval = self.settings.get_min_reversal_interval()
-        self.smart_momentum = self.settings.get_smart_momentum()
+        """
+        Loads all settings into a dictionary and atomically swaps the reference.
+        This ensures the hook thread always sees a consistent state without locks.
+        """
+        new_config = {
+            'interval': self.settings.get_interval(),
+            'blacklist': [x.lower() for x in self.settings.get_blacklist()],
+            'app_profiles': self.settings.get_app_profiles(),
+            'enabled': self.settings.get_enabled(),
+            'threshold': self.settings.get_direction_change_threshold(),
+            'strict': self.settings.get_strict_mode(),
+            'min_reversal': self.settings.get_min_reversal_interval(),
+            'smart': self.settings.get_smart_momentum(),
+        }
+        
+        # Atomic assignment in Python (GIL ensures this is safe for single ref swap)
+        self.config_snapshot = new_config
+        
         self._consecutive_opposite_events = 0
+        
         if update_tray_icon_callback:
             update_tray_icon_callback()
         if update_font_callback:
             update_font_callback()
 
-    def _get_current_app_settings(self):
-        app_name = get_foreground_process_name()
-        if app_name and app_name in self.app_profiles:
-            profile = self.app_profiles[app_name]
-            return profile.get('interval', self.block_interval), \
-                   profile.get('threshold', self.direction_change_threshold)
-        return self.block_interval, self.direction_change_threshold
-
-    def is_blacklisted(self) -> bool:
-        hwnd = win32gui.GetForegroundWindow()
-        if not hwnd:
-            return False
-        _, pid = win32process.GetWindowThreadProcessId(hwnd)
+    def _get_foreground_app_name(self):
+        """Efficiently retrieves the foreground app name using caching."""
         try:
-            proc = psutil.Process(pid).name()
-            return proc.lower() in (p.lower() for p in self.blacklist)
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            hwnd = win32gui.GetForegroundWindow()
+            if hwnd != self.last_hwnd:
+                self.last_hwnd = hwnd
+                # Only fetch from psutil if the window handle changed
+                self.last_app_name = get_foreground_process_name()
+            return self.last_app_name
+        except Exception:
+            return None
+
+    def _get_current_app_settings(self, app_name, cfg):
+        """Resolves settings for the specific app from the config snapshot."""
+        if app_name and app_name in cfg['app_profiles']:
+            profile = cfg['app_profiles'][app_name]
+            return profile.get('interval', cfg['interval']), \
+                   profile.get('threshold', cfg['threshold'])
+        return cfg['interval'], cfg['threshold']
+
+    def is_blacklisted(self, app_name, cfg) -> bool:
+        if not app_name:
             return False
+        # Blacklist is already lowercased in reload_settings
+        return app_name.lower() in cfg['blacklist']
 
     def start(self):
         self.thread_id = self.kernel32.GetCurrentThreadId()
@@ -306,119 +403,129 @@ class MouseHook:
         )
 
         def hook_proc(nCode, wParam, lParam):
-            if nCode == 0 and wParam == win32con.WM_MOUSEWHEEL:
-                ms = ctypes.cast(lParam, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
-                delta_short = ctypes.c_short((ms.mouseData >> 16) & 0xFFFF).value
-                current_dir = 1 if delta_short > 0 else -1
-                now = time.time()
+            try:
+                if nCode == 0 and wParam == win32con.WM_MOUSEWHEEL:
+                    # 1. ATOMIC SNAPSHOT: Grab reference to current config
+                    cfg = self.config_snapshot
 
-                # --- CALIBRATION MODE ---
-                # If a calibration callback is set, pass the raw event and DO NOT BLOCK.
-                if self.calibration_callback:
-                    self.calibration_callback(now, current_dir)
-                    return self.user32.CallNextHookEx(self.hook_id, nCode, wParam, lParam)
+                    ms = ctypes.cast(lParam, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
+                    delta_short = ctypes.c_short((ms.mouseData >> 16) & 0xFFFF).value
+                    current_dir = 1 if delta_short > 0 else -1
+                    now = time.time()
 
-                # logging.debug(f"HOOK: Event received. Enabled={self.enabled}")
-                if not self.enabled:
-                    return self.user32.CallNextHookEx(self.hook_id, nCode, wParam, lParam)
-
-                if self.is_blacklisted():
-                    # logging.debug("HOOK: Blacklisted app.")
-                    return self.user32.CallNextHookEx(self.hook_id, nCode, wParam, lParam)
-
-                current_block_interval, current_direction_change_threshold = self._get_current_app_settings()
-                
-                time_diff = now - self.last_time
-                logging.debug(f"HOOK: Delta={delta_short}, Dir={current_dir}, LastDir={self.last_dir}, TimeDiff={time_diff:.4f}")
-
-                # --- PHYSICS CHECK (The "Impossible Speed" Filter) ---
-                # If a scroll event happens in the OPPOSITE direction extremely fast (e.g. < 50ms),
-                # it is physically impossible for a human finger. It is 100% noise/bounce.
-                # Block it immediately and DO NOT change any state (don't count it, don't reset timers).
-                if (self.last_dir is not None) and (current_dir != self.last_dir) and (time_diff < self.min_reversal_interval):
-                    logging.debug(f"HOOK: PHYSICS BLOCK (Impossible Reversal: {time_diff:.4f}s < {self.min_reversal_interval}s)")
-                    return 1
-
-                # Check if the current session (blocking interval) has expired
-                if (self.last_dir is not None) and (time_diff >= current_block_interval):
-                    self.last_dir = None
-                    self.pending_start_dir = None
-                    self._consecutive_opposite_events = 0
-
-                if self.last_dir is None:
-                    # Starting a new sequence
-                    if self.strict_mode:
-                        if self.pending_start_dir is None:
-                            # First tick: Block and wait for confirmation
-                            self.pending_start_dir = current_dir
-                            self.last_time = now
-                            logging.debug("HOOK: BLOCK (Strict: First Tick)")
-                            return 1
-                        else:
-                            # Second tick: Check confirmation
-                            if current_dir == self.pending_start_dir:
-                                # Confirmed
-                                self.last_dir = current_dir
-                                self.last_time = now
-                                self.pending_start_dir = None
-                                logging.debug("HOOK: PASS (Strict: Confirmed)")
-                                return self.user32.CallNextHookEx(self.hook_id, nCode, wParam, lParam)
-                            else:
-                                # Mismatch (Glitch detected or user erratic)
-                                # Treat this as a NEW First Tick
-                                self.pending_start_dir = current_dir
-                                self.last_time = now
-                                logging.debug("HOOK: BLOCK (Strict: Mismatch Reset)")
-                                return 1
-                    else:
-                        # Standard Mode: Allow immediately
-                        self.last_dir = current_dir
-                        self.last_time = now
-                        self._consecutive_opposite_events = 0
-                        logging.debug("HOOK: PASS (Time/First)")
+                    # --- CALIBRATION MODE ---
+                    if self.calibration_callback:
+                        self.calibration_callback(now, current_dir)
                         return self.user32.CallNextHookEx(self.hook_id, nCode, wParam, lParam)
 
-                # If we are here, last_dir is set (Active Session)
-                if current_dir == self.last_dir:
-                    self.last_time = now
-                    self._consecutive_opposite_events = 0
-                    self.pending_start_dir = None
-                    logging.debug("HOOK: PASS (Same Dir)")
-                    return self.user32.CallNextHookEx(self.hook_id, nCode, wParam, lParam)
-                else:
-                    self._consecutive_opposite_events += 1
-                    
-                    # --- MOMENTUM CHECK (Smart Threshold) ---
-                    # Adjust threshold dynamically based on speed.
-                    # time_diff is (now - self.last_time), where self.last_time is the last ALLOWED event.
-                    # Small time_diff = High Speed = Higher Threshold (harder to reverse)
-                    dynamic_threshold = current_direction_change_threshold
-                    momentum_tag = "NORMAL"
-                    
-                    if self.smart_momentum:
-                        if time_diff < 0.10: # Very Fast (< 100ms)
-                            dynamic_threshold += 2
-                            momentum_tag = "FAST(+2)"
-                        elif time_diff < 0.20: # Fast (< 200ms)
-                            dynamic_threshold += 1
-                            momentum_tag = "MED(+1)"
+                    if not cfg['enabled']:
+                        return self.user32.CallNextHookEx(self.hook_id, nCode, wParam, lParam)
 
-                    logging.debug(f"HOOK: CHECK (Opposite Dir) Speed={momentum_tag} (dt={time_diff:.4f}s) | Count={self._consecutive_opposite_events}/{dynamic_threshold} (Base={current_direction_change_threshold})")
+                    # --- PERFORMANCE OPTIMIZATION ---
+                    current_app_name = self._get_foreground_app_name()
 
-                    if self._consecutive_opposite_events >= dynamic_threshold:
-                        self.last_dir = current_dir
+                    if self.is_blacklisted(current_app_name, cfg):
+                        return self.user32.CallNextHookEx(self.hook_id, nCode, wParam, lParam)
+
+                    current_block_interval, current_direction_change_threshold = self._get_current_app_settings(current_app_name, cfg)
+                    
+                    time_diff = now - self.last_time
+                    
+                    if logging.getLogger().isEnabledFor(logging.DEBUG):
+                        logging.debug(f"HOOK: Delta={delta_short}, Dir={current_dir}, LastDir={self.last_dir}, TimeDiff={time_diff:.4f}")
+
+                    # --- PHYSICS CHECK (The "Impossible Speed" Filter) ---
+                    if (self.last_dir is not None) and (current_dir != self.last_dir) and (time_diff < cfg['min_reversal']):
+                        if logging.getLogger().isEnabledFor(logging.DEBUG):
+                            logging.debug(f"HOOK: PHYSICS BLOCK (Impossible Reversal: {time_diff:.4f}s < {cfg['min_reversal']}s)")
+                        return 1
+
+                    # Check if the current session (blocking interval) has expired
+                    if (self.last_dir is not None) and (time_diff >= current_block_interval):
+                        self.last_dir = None
+                        self.pending_start_dir = None
+                        self._consecutive_opposite_events = 0
+
+                    if self.last_dir is None:
+                        # Starting a new sequence
+                        if cfg['strict']:
+                            if self.pending_start_dir is None:
+                                # First tick: Block and wait for confirmation
+                                self.pending_start_dir = current_dir
+                                self.last_time = now
+                                if logging.getLogger().isEnabledFor(logging.DEBUG):
+                                    logging.debug("HOOK: BLOCK (Strict: First Tick)")
+                                return 1
+                            else:
+                                # Second tick: Check confirmation
+                                if current_dir == self.pending_start_dir:
+                                    # Confirmed
+                                    self.last_dir = current_dir
+                                    self.last_time = now
+                                    self.pending_start_dir = None
+                                    if logging.getLogger().isEnabledFor(logging.DEBUG):
+                                        logging.debug("HOOK: PASS (Strict: Confirmed)")
+                                    return self.user32.CallNextHookEx(self.hook_id, nCode, wParam, lParam)
+                                else:
+                                    # Mismatch (Glitch detected or user erratic)
+                                    # Treat this as a NEW First Tick
+                                    self.pending_start_dir = current_dir
+                                    self.last_time = now
+                                    if logging.getLogger().isEnabledFor(logging.DEBUG):
+                                        logging.debug("HOOK: BLOCK (Strict: Mismatch Reset)")
+                                    return 1
+                        else:
+                            # Standard Mode: Allow immediately
+                            self.last_dir = current_dir
+                            self.last_time = now
+                            self._consecutive_opposite_events = 0
+                            if logging.getLogger().isEnabledFor(logging.DEBUG):
+                                logging.debug("HOOK: PASS (Time/First)")
+                            return self.user32.CallNextHookEx(self.hook_id, nCode, wParam, lParam)
+
+                    # If we are here, last_dir is set (Active Session)
+                    if current_dir == self.last_dir:
                         self.last_time = now
                         self._consecutive_opposite_events = 0
                         self.pending_start_dir = None
-                        logging.debug("HOOK: PASS (Threshold Met)")
+                        if logging.getLogger().isEnabledFor(logging.DEBUG):
+                            logging.debug("HOOK: PASS (Same Dir)")
                         return self.user32.CallNextHookEx(self.hook_id, nCode, wParam, lParam)
                     else:
-                        if current_dir > 0:
-                            self.blocked_up += 1
+                        self._consecutive_opposite_events += 1
+                        
+                        # --- MOMENTUM CHECK (Smart Threshold) ---
+                        dynamic_threshold = current_direction_change_threshold
+                        
+                        if cfg['smart']:
+                            if time_diff < 0.10: # Very Fast (< 100ms)
+                                dynamic_threshold += 2
+                            elif time_diff < 0.20: # Fast (< 200ms)
+                                dynamic_threshold += 1
+
+                        if logging.getLogger().isEnabledFor(logging.DEBUG):
+                            logging.debug(f"HOOK: CHECK (Opposite Dir) dt={time_diff:.4f}s | Count={self._consecutive_opposite_events}/{dynamic_threshold}")
+
+                        if self._consecutive_opposite_events >= dynamic_threshold:
+                            self.last_dir = current_dir
+                            self.last_time = now
+                            self._consecutive_opposite_events = 0
+                            self.pending_start_dir = None
+                            if logging.getLogger().isEnabledFor(logging.DEBUG):
+                                logging.debug("HOOK: PASS (Threshold Met)")
+                            return self.user32.CallNextHookEx(self.hook_id, nCode, wParam, lParam)
                         else:
-                            self.blocked_down += 1
-                        logging.debug("HOOK: BLOCK")
-                        return 1
+                            if current_dir > 0:
+                                self.blocked_up += 1
+                            else:
+                                self.blocked_down += 1
+                            if logging.getLogger().isEnabledFor(logging.DEBUG):
+                                logging.debug("HOOK: BLOCK")
+                            return 1
+            except Exception as e:
+                logging.critical(f"HOOK EXCEPTION: {e}", exc_info=True)
+                # Fallback to standard behavior to not freeze mouse
+                return self.user32.CallNextHookEx(self.hook_id, nCode, wParam, lParam)
 
             return self.user32.CallNextHookEx(self.hook_id, nCode, wParam, lParam)
 
@@ -430,12 +537,10 @@ class MouseHook:
         self.user32.SetWindowsHookExA.restype = ctypes.c_void_p # HHOOK
 
         # For WH_MOUSE_LL, hMod should be NULL (0) if the hook proc is in the same process/thread context
-        # or if we are using a low-level hook which doesn't require injection.
-        # Error 126 (ERROR_MOD_NOT_FOUND) happens when we pass a module handle that isn't valid for the hook type.
         self.hook_id = self.user32.SetWindowsHookExA(
             win32con.WH_MOUSE_LL,
             self.hook_cb,
-            0, # hMod must be NULL for WH_MOUSE_LL in Python usually
+            0, 
             0,
         )
         
@@ -493,8 +598,6 @@ if __name__ == "__main__":
             script = os.path.abspath(__file__)
             params = ' '.join([f'"{arg}"' for arg in sys.argv[1:]])
             
-            # If running as a script, we need to pass the script path to the executable (python.exe)
-            # If frozen (exe), sys.executable is the program itself
             if getattr(sys, 'frozen', False):
                 executable = sys.executable
                 arguments = params
@@ -506,7 +609,7 @@ if __name__ == "__main__":
             sys.exit(0)
         except Exception as e:
             print(f"Failed to elevate: {e}")
-            # Fallback to normal execution, though it might fail
+            # Fallback to normal execution
     
     if len(sys.argv) > 2 and sys.argv[1] == "--watchdog":
         run_watchdog(sys.argv[2])
@@ -535,6 +638,9 @@ if __name__ == "__main__":
         
         settings = Settings()
         logging.info('Settings loaded')
+
+        # Load Language
+        translator.set_language(settings.get_language())
 
         if getattr(sys, 'frozen', False):
             base_path = sys._MEIPASS
@@ -570,9 +676,10 @@ if __name__ == "__main__":
         """)
         logging.info('Stylesheet applied')
 
+        watchdog_process = None
         if settings.get_startup() and "--no-watchdog" not in sys.argv:
             try:
-                subprocess.Popen(
+                watchdog_process = subprocess.Popen(
                     [sys.executable, os.path.abspath(__file__), "--watchdog", str(os.getpid())],
                     creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
                 )
@@ -583,6 +690,9 @@ if __name__ == "__main__":
 
         hook = MouseHook(settings)
         logging.info('Mouse hook created')
+
+        # Register cleanup to run on exit
+        atexit.register(hook.stop)
 
         t = threading.Thread(target=hook.start, daemon=True)
         t.start()
@@ -598,12 +708,12 @@ if __name__ == "__main__":
         logging.info('Tray icon updated')
 
         menu = QtWidgets.QMenu()
-        act_settings = menu.addAction("Settings")
-        act_toggle_enabled = menu.addAction("Toggle Scroll Blocking")
-        act_help = menu.addAction("Help")
-        act_about = menu.addAction("About")
+        act_settings = menu.addAction(translator.tr("tray_settings"))
+        act_toggle_enabled = menu.addAction(translator.tr("tray_toggle"))
+        act_help = menu.addAction(translator.tr("tray_help"))
+        act_about = menu.addAction(translator.tr("tray_about"))
         menu.addSeparator()
-        act_exit = menu.addAction("Exit")
+        act_exit = menu.addAction(translator.tr("tray_exit"))
         tray.setContextMenu(menu)
         tray.setToolTip("WheelScrollFixer")
         tray.show()
@@ -614,19 +724,26 @@ if __name__ == "__main__":
         act_settings.triggered.connect(dlg.show)
         logging.info('Settings dialog created')
 
-        act_settings.setWhatsThis("Open the Settings window to configure blocking and UI options.")
-        act_toggle_enabled.setWhatsThis("Enable/disable scroll blocking globally.")
-        act_help.setWhatsThis("Open the Help dialog.")
-        act_about.setWhatsThis("Open the About dialog.")
-        act_exit.setWhatsThis("Quit the application.")
+        def refresh_tray_menu_text():
+             act_settings.setText(translator.tr("tray_settings"))
+             act_toggle_enabled.setText(translator.tr("tray_toggle"))
+             act_help.setText(translator.tr("tray_help"))
+             act_about.setText(translator.tr("tray_about"))
+             act_exit.setText(translator.tr("tray_exit"))
+
+        # Connect signal instead of monkey-patching
+        dlg.languageChanged.connect(refresh_tray_menu_text)
+
 
         def toggle_enabled_from_tray():
             current_state = settings.get_enabled()
             settings.set_enabled(not current_state)
             hook.reload_settings(update_tray_icon, apply_global_font)
             update_tray_icon()
+            
+            status_text = translator.tr("tray_enabled") if not current_state else translator.tr("tray_disabled")
             QtWidgets.QMessageBox.information(
-                None, "Scroll Blocking", f"Scroll blocking is now: {'Enabled' if not current_state else 'Disabled'}.",
+                None, translator.tr("tray_msg_title"), f"{translator.tr('tray_msg_title')}: {status_text}",
             )
         act_toggle_enabled.triggered.connect(toggle_enabled_from_tray)
 
@@ -635,6 +752,18 @@ if __name__ == "__main__":
         def show_about_dialog():
             AboutDialog(dlg).exec_()
         def exit_app():
+            if watchdog_process:
+                try:
+                    logging.info("Killing watchdog process before exit.")
+                    watchdog_process.terminate()
+                    try:
+                        # Wait for it to actually die to prevent race condition (Zombie App)
+                        watchdog_process.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        logging.warning("Watchdog did not terminate gracefully. Force killing.")
+                        watchdog_process.kill()
+                except Exception as e:
+                    logging.error(f"Failed to kill watchdog: {e}")
             hook.stop()
             app.quit()
 

@@ -2,11 +2,9 @@
 
 This document outlines the future direction and potential features for WheelScrollFixer. It's a living document intended to guide development and inspire contributions. If you're looking for a way to contribute, picking up an item from this list is a great place to start!
 
-## Next Up: The Brain Update (v1.3.0) - *COMPLETED!*
+## Next Up
 
-*   **Calibration Wizard**: A comprehensive, interactive diagnostics tool that analyzes your mouse's unique scroll behavior (glitches, speed, bounce) via global input monitoring and recommends optimized settings automatically.
-*   **Physics Check**: Implemented an "Impossible Reversal" filter. Scroll events in the opposite direction occurring faster than humanly possible (e.g., <50ms) are immediately discarded as noise, without affecting the blocking logic state.
-*   **Smart Momentum**: Dynamic threshold adjustment. The `Direction Change Threshold` is now automatically increased during fast scrolling, making it harder for accidental reversals to register when you have high scroll momentum.
+*   **Automatic Update Checker**: Implement a feature that periodically checks the GitHub Releases page for a new version and notifies the user.
 
 ---
 
@@ -26,12 +24,6 @@ These are transformative features that would significantly expand the scope of t
 *   [ ] **Plugin Architecture**:
     *   This is the ultimate goal for extensibility. Refactor the core application to allow new functionality (like gestures or macros) to be added via plugins. This would create a powerful framework for community contributions.
 
-## Project & Distribution
-
-Improvements related to how the application is built, packaged, and updated.
-
-*   [ ] **Automatic Update Checker**: Implement a feature that periodically checks the GitHub Releases page for a new version and notifies the user.
-
 ---
 
 ## v2.0 Goal: Continuous Learning & Self-Optimization
@@ -46,4 +38,16 @@ This is the ultimate goal for making WheelScrollFixer truly "smart."
 
 ---
 
-Have an idea that's not on this list? Feel free to open an issue to discuss it!
+## Completed Milestones
+
+### v1.4.0 Enterprise Update (Stability)
+*   **Thread Safety**: Implemented Atomic Snapshots to prevent race conditions.
+*   **Robustness**: Exception-safe hooks and registry handling.
+*   **Math Overhaul**: Percentile-based calibration logic.
+*   **Modern Config**: JSON settings with auto-migration.
+*   **Zombie Fix**: Proper Watchdog termination.
+
+### v1.3.0 The Brain Update
+*   **Calibration Wizard**: A comprehensive, interactive diagnostics tool that analyzes your mouse's unique scroll behavior (glitches, speed, bounce) via global input monitoring and recommends optimized settings automatically.
+*   **Physics Check**: Implemented an "Impossible Reversal" filter. Scroll events in the opposite direction occurring faster than humanly possible (e.g., <50ms) are immediately discarded as noise, without affecting the blocking logic state.
+*   **Smart Momentum**: Dynamic threshold adjustment. The `Direction Change Threshold` is now automatically increased during fast scrolling, making it harder for accidental reversals to register when you have high scroll momentum.

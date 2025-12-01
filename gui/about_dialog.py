@@ -34,12 +34,11 @@ class AboutDialog(QtWidgets.QDialog):
         description_label.setWordWrap(True)
         layout.addWidget(description_label)
 
-        website_label = QtWidgets.QTextBrowser(self)
+        # Optimized: Use QLabel with OpenExternalLinks instead of full QTextBrowser
+        website_label = QtWidgets.QLabel('<a href="https://en.methetech.com/" style="color: #3a7bd5; text-decoration: none;">en.methetech.com</a>')
+        website_label.setAlignment(QtCore.Qt.AlignCenter)
         website_label.setOpenExternalLinks(True)
-        website_label.setHtml(
-            '<p align="center"><a href="https://en.methetech.com/">en.methetech.com</a></p>'
-        )
-        website_label.setFixedHeight(30) # Adjust height to fit the link
+        website_label.setCursor(QtCore.Qt.PointingHandCursor)
         layout.addWidget(website_label)
 
         ok_button = QtWidgets.QPushButton('OK')

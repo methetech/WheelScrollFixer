@@ -34,17 +34,15 @@ We also maintain a **[Project Roadmap](ROADMAP.md)** with a list of desired feat
     ```
 3.  **Make your changes**.
 4.  **Write clear, concise commit messages**.
-5.  **Test your changes** thoroughly.
-6.  **Submit a Pull Request (PR)**:
+5.  **Submit a Pull Request (PR)**:
     *   Ensure your branch is up-to-date with the `main` branch.
     *   Provide a clear description of your changes.
     *   Reference any related issues.
 
-## Code Style
+## Code Style & Safety
 
-*   Follow PEP 8 for Python code.
-*   Use clear and descriptive variable and function names.
-*   Add comments where necessary to explain complex logic.
+*   **PEP 8**: Follow standard Python styling.
+*   **Thread Safety**: This application uses a multi-threaded architecture (GUI + MouseHook). Any changes to shared state (like Settings) MUST respect the "Atomic Snapshot" pattern or use appropriate locking. Do NOT introduce race conditions.
 
 ## Development Setup
 
@@ -53,7 +51,7 @@ To set up your development environment, follow the installation steps in `README
 When running the application for development, it is recommended to use the `--no-watchdog` flag. This will prevent the watchdog from restarting the application if it crashes or is closed.
 
 ```bash
-python wheel_scroll_fixer.py --no-watchdog
+python WheelScrollFixer.py --no-watchdog
 ```
 
 Thank you for contributing!

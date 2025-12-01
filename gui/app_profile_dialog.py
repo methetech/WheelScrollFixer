@@ -8,44 +8,60 @@ import os
 
 class AppProfileDialog(QtWidgets.QDialog):
     """The application profile dialog."""
-    def __init__(self, current_app_name: str = "", current_interval: float = 0.5, current_threshold: int = 3, parent=None):
+    def __init__(self, parent=None, current_app_name=None, current_interval=0.3, current_threshold=2):
         super().__init__(parent)
         self.setWindowTitle("Application Profile")
         self.setWindowIcon(QtGui.QIcon(os.path.join(os.path.dirname(__file__), "..", "mouse.ico")))
-        self.setMinimumSize(400, 220)
-        self.setStyleSheet(QtWidgets.QApplication.instance().styleSheet())
+        self.setFixedSize(400, 250)
+        
+        self.current_app_name = current_app_name
+        self.current_interval = current_interval
+        self.current_threshold = current_threshold
+        
+        self._init_ui()
 
+    def _init_ui(self):
         layout = QtWidgets.QVBoxLayout(self)
-
+        
         form_layout = QtWidgets.QFormLayout()
-
-        self.app_name_input = QtWidgets.QLineEdit(current_app_name)
+        
+        self.app_name_input = QtWidgets.QLineEdit()
         self.app_name_input.setPlaceholderText("e.g., chrome.exe")
-        form_layout.addRow("Application Name:", self.app_name_input)
-
-        self.get_current_app_btn = QtWidgets.QPushButton("Get Current App")
-        self.get_current_app_btn.clicked.connect(self._get_current_app)
-        form_layout.addRow("", self.get_current_app_btn)
-
+        if self.current_app_name:
+            self.app_name_input.setText(self.current_app_name)
+            # If editing, maybe don't allow changing name? Or allow rename.
+            # Let's allow rename for now.
+        
         self.interval_spin = QtWidgets.QDoubleSpinBox()
         self.interval_spin.setRange(0.05, 5.0)
         self.interval_spin.setSingleStep(0.05)
-        self.interval_spin.setValue(current_interval)
-        form_layout.addRow("Block Interval (s):", self.interval_spin)
-
+        self.interval_spin.setValue(self.current_interval)
+        
         self.threshold_spin = QtWidgets.QSpinBox()
         self.threshold_spin.setRange(1, 10)
-        self.threshold_spin.setValue(current_threshold)
-        form_layout.addRow("Direction Change Threshold:", self.threshold_spin)
-
+        self.threshold_spin.setValue(self.current_threshold)
+        
+        form_layout.addRow("Application Name:", self.app_name_input)
+        form_layout.addRow("Block Interval (s):", self.interval_spin)
+        form_layout.addRow("Direction Threshold:", self.threshold_spin)
+        
         layout.addLayout(form_layout)
+        
+        self.button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+        self.button_box.accepted.connect(self.accept)
+        self.button_box.rejected.connect(self.reject)
+        
+        layout.addWidget(self.button_box)
+        
+        # Input Validation
+        self.ok_btn = self.button_box.button(QtWidgets.QDialogButtonBox.Ok)
+        self.app_name_input.textChanged.connect(self._validate_input)
+        self._validate_input() # Initial check
 
-        button_box = QtWidgets.QDialogButtonBox(
-            QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel
-        )
-        button_box.accepted.connect(self.accept)
-        button_box.rejected.connect(self.reject)
-        layout.addWidget(button_box)
+    def _validate_input(self):
+        """Disables the OK button if the app name is empty."""
+        is_valid = bool(self.app_name_input.text().strip())
+        self.ok_btn.setEnabled(is_valid)
 
     def _get_current_app(self):
         try:

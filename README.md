@@ -45,51 +45,37 @@ If you want to run or build from source:
 4.  **Build the executable**:
     To create the standalone `WheelScrollFixer.exe` file, run the following command:
     ```bash
-    pyinstaller --onefile --noconsole --icon=mouse.ico --name=WheelScrollFixer WheelScrollFixer.py
+    pyinstaller --onefile --noconsole --icon=mouse.ico --name=WheelScrollFixer --add-data "mouse.ico;." WheelScrollFixer.py
     ```
     The final executable will be located in the `dist` folder.
 
 ## The Problem: Annoying Mouse Wheel Jitter
 
-Have you ever been scrolling through a long document or webpage, only to have the page "jump" back up slightly when you stop?
+Have you ever been scrolling through a long document or webpage, only to have the page "jump" back up slightly when you stop? This is "scroll bounce," caused by sensitive or faulty mouse encoders.
 
-This often happens with sensitive or free-spinning mouse wheels. When the wheel comes to a halt, it can physically "bounce" or "jitter," sending one or more scroll events in the opposite direction. This tiny, accidental input is enough to make your view jump, which can be distracting and frustrating.
+## How It Works: The Solution
 
-## How It Works: The Solution (v1.3.0 Brain Update!)
+WheelScrollFixer acts as a smart filter between your mouse and Windows.
 
-WheelScrollFixer solves this by intelligently monitoring mouse wheel activity and blocking these accidental "jitter" events.
-
-It works through a sophisticated, multi-layered approach:
-
-1.  **Low-Level Mouse Hook**: The application registers a `WH_MOUSE_LL` hook, a feature in Windows that allows it to monitor all low-level mouse events system-wide, specifically looking for `WM_MOUSEWHEEL` messages.
-
-2.  **The "Physics Check" (NEW in v1.3.0)**: This is the first line of defense. If a scroll event occurs in the *opposite direction* faster than a human can physically react (e.g., <50ms), it's immediately identified as electrical noise or mechanical bounce and **discarded without affecting the logic state**. This prevents the system from getting confused by "impossible" signals.
-
-3.  **"Strict Mode" (NEW in v1.2.0)**: If enabled (default), when a new scroll sequence begins after a period of inactivity, the very first scroll event is held back. The system then waits for a second event in the *same direction* to confirm your true intent. This completely eliminates issues where a faulty mouse sends a single random signal right at the start of a scroll, preventing it from locking the wrong direction.
-
-4.  **Establishing a Direction & Blocking Jitter**: Once a direction is confirmed (or immediately if Strict Mode is off), the application notes the direction (up or down) and starts a short timer (the `Block Interval`).
-    *   If you continue scrolling in the **same direction**, the timer resets, and scrolling proceeds normally.
-    *   If an event in the **opposite direction** occurs within the `Block Interval`, the system initially assumes it's an accidental jitter and **blocks it**.
-
-5.  **"Smart Momentum" (NEW in v1.3.0)**: This feature dynamically adjusts the tolerance for direction changes. If you are scrolling very fast, the system understands you have high "momentum" and temporarily **increases the `Direction Change Threshold`**. This makes it much harder for a single, accidental opposite flick to change your scroll direction during rapid movement, while still keeping the system responsive during slower, deliberate scrolling.
-
-6.  **Allowing Deliberate Changes**: What if you *meant* to change direction quickly? That's what the base **Direction Change Threshold** is for. This setting defines how many consecutive opposite-direction events are needed to override the block. If you scroll aggressively enough in the new direction, the application recognizes it as a deliberate change, establishes a new scrolling direction, and lets the events pass through.
-
-This multi-layered approach ensures the smoothest, most predictable, and intelligent scroll experience possible, even with the most problematic mouse wheels.
+1.  **Physics Check**: Filters out physically impossible reversals (<50ms) instantly.
+2.  **Strict Mode**: Verifies the start of every scroll sequence to prevent initial glitches.
+3.  **Smart Momentum**: Dynamically adjusts sensitivity based on your scroll speed.
+4.  **Thread-Safe Core**: Uses atomic snapshots to ensure zero race conditions or crashes.
+5.  **Robust Error Handling**: Silent recovery from hook errors and registry blocks.
 
 ## Features
 
-*   **Calibration Wizard (NEW in v1.3.0)**: A comprehensive, interactive diagnostics tool that analyzes your mouse's unique behavior and automatically suggests optimized settings for all parameters. No more guesswork!
-*   **Physics Check (NEW in v1.3.0)**: Intelligent filtering for physically impossible scroll reversals.
-*   **Smart Momentum (NEW in v1.3.0)**: Dynamically adjusts blocking sensitivity based on your scrolling speed.
-*   **Strict Mode (v1.2.0)**: Advanced logic that verifies scroll intent before allowing movement, eliminating start-of-scroll glitches.
-*   **Customizable Blocking Logic**: Fine-tune the `Block Interval` and `Direction Change Threshold` to match your mouse's sensitivity and your personal preference.
-*   **Restore Defaults (NEW in v1.3.0)**: Instantly revert all settings to the recommended optimal defaults.
-*   **Application Blacklist**: Disable scroll blocking for specific applications (e.g., games, design software) where you need raw, unfiltered mouse input.
-*   **Per-Application Profiles**: Define unique `Interval` and `Threshold` settings for different applications.
-*   **Start on Boot**: Set the application to launch automatically with Windows. When enabled, a watchdog process ensures the app remains running.
-*   **System Tray Control**: The application runs quietly in the system tray. Right-click the icon to access settings, toggle blocking, or exit.
-*   **Clean & Modern UI**: A user-friendly, single-panel interface organized with clear sections.
+*   **Enterprise-Grade Stability**: Re-engineered core with proper thread safety and exception handling.
+*   **Calibration Wizard 2.0**: An interactive "Mouse Lab" with:
+    *   **Live Signal Visualizer**: See your mouse signals in real-time (oscilloscope style).
+    *   **Animated Guide**: Follow visual cues for Flow, Sprint, and Brake tests.
+    *   **Robust Analysis**: Uses statistical percentiles to ignore outliers and random glitches.
+*   **Smart JSON Config**: Modern, auto-migrating configuration system that preserves your settings.
+*   **Restore Defaults**: One-click reset to the recommended optimal settings.
+*   **Application Blacklist**: Disable blocking for specific games or apps.
+*   **Per-Application Profiles**: Custom settings for different apps.
+*   **Start on Boot**: Auto-start with Windows (now with antivirus-safe error handling).
+*   **System Tray Control**: Quiet operation in the background.
 
 ## Command-line Arguments
 
